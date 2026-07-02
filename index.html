@@ -178,6 +178,15 @@ function renderOfflineBar(){
 /* ===== ユーティリティ ===== */
 function genId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
 function p2(n){return String(n).padStart(2,'0');}
+function leaveLabel(type){return{paid_leave:'有給（全日）',paid_leave_am:'有給（午前）',paid_leave_pm:'有給（午後）',absence:'欠勤（全日）',absence_am:'欠勤（午前）',absence_pm:'欠勤（午後）'}[type]||type;}
+function leaveDays(type){return(type==='paid_leave'||type==='absence')?1:0.5;}
+async function deleteAttendance(id){return sbFetch('attendance?id=eq.'+id,'DELETE');}
+function calcWorkMin(dayRecs){
+  const ins=dayRecs.filter(r=>r.type==='clock_in').sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+  const outs=dayRecs.filter(r=>r.type==='clock_out').sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+  if(!ins.length||!outs.length)return null;
+  return Math.round((new Date(outs[outs.length-1].timestamp)-new Date(ins[0].timestamp))/60000);
+}
 function fmtDateTime(iso){if(!iso)return'-';const d=new Date(iso);return d.getFullYear()+'/'+p2(d.getMonth()+1)+'/'+p2(d.getDate())+' '+p2(d.getHours())+':'+p2(d.getMinutes());}
 function fmtTime(iso){if(!iso)return'-';const d=new Date(iso);return p2(d.getHours())+':'+p2(d.getMinutes());}
 function fmtDate(iso){if(!iso)return'-';const d=new Date(iso);return d.getFullYear()+'/'+p2(d.getMonth()+1)+'/'+p2(d.getDate());}
@@ -421,11 +430,12 @@ async function mountUserTab(){
       <div class="card"><h2>打刻履歴</h2>
         ${records.length?records.map(r=>`<div class="rec-row">
           <div class="rec-left"><span class="dot ${r.type==='clock_in'?'dot-in':'dot-out'}"></span>
-            <div>${fmtDate(r.timestamp)} ${r.type==='clock_in'?'出勤':'退勤'} ${r.corrected?'<span class="badge badge-approved">修正済</span>':''}</div>
+            <div>${fmtDate(r.timestamp)} ${r.type==='clock_in'?'出勤':'退勤'} ${r.corrected?'<span class="badge badge-approved">修正済</span>':''} ${r.from_reservation?'<span class="badge badge-confirmed">予約</span>':''}</div>
           </div>
-          <div style="display:flex;align-items:center;gap:10px;">
+          <div style="display:flex;align-items:center;gap:6px;">
             <span class="rec-time">${fmtTime(r.timestamp)}</span>
-            <button class="btn btn-line btn-sm" data-fixrec="${r.id}" data-fixtype="${r.type}" data-fixtime="${r.timestamp}">修正依頼</button>
+            <button class="btn btn-line btn-sm" data-fixrec="${r.id}" data-fixtype="${r.type}" data-fixtime="${r.timestamp}">修正</button>
+            <button class="btn btn-sm" style="background:var(--red-soft);color:var(--red);" data-delatt="${r.id}">削除</button>
           </div></div>`).join(''):'<div class="empty">打刻履歴がありません</div>'}
       </div>
       <div class="card"><h2>修正依頼の状況</h2>
@@ -440,6 +450,11 @@ async function mountUserTab(){
     document.querySelectorAll('[data-fixrec]').forEach(btn=>btn.addEventListener('click',()=>{
       state.correctionModal={recordId:btn.getAttribute('data-fixrec'),type:btn.getAttribute('data-fixtype'),oldTime:btn.getAttribute('data-fixtime')};
       openCorrectionModal();
+    }));
+    document.querySelectorAll('[data-delatt]').forEach(btn=>btn.addEventListener('click',async()=>{
+      if(!confirm('この打刻を削除しますか？'))return;
+      await deleteAttendance(btn.getAttribute('data-delatt'));
+      showToast('削除しました');mountUserTab();
     }));
   }
   else if(state.userTab==='reserve'){
@@ -484,14 +499,22 @@ async function mountUserTab(){
     const requests=await getLeaveRequests(email);
     body.innerHTML=`
       <div class="card"><h2>有給申請・欠勤連絡</h2>
-        <label>種別</label><select id="leaveType"><option value="paid_leave">有給申請</option><option value="absence">欠勤連絡</option></select>
+        <label>種別</label>
+        <select id="leaveType">
+          <option value="paid_leave">有給申請（全日）</option>
+          <option value="paid_leave_am">有給申請（午前半日）</option>
+          <option value="paid_leave_pm">有給申請（午後半日）</option>
+          <option value="absence">欠勤連絡（全日）</option>
+          <option value="absence_am">欠勤連絡（午前半日）</option>
+          <option value="absence_pm">欠勤連絡（午後半日）</option>
+        </select>
         <label>対象日</label><input id="leaveDate" type="date">
         <label>理由</label><textarea id="leaveReason" rows="3" placeholder="例：私用のため / 体調不良のため"></textarea>
         <button class="btn btn-navy" id="leaveSubmit" style="width:100%;margin-top:14px;">申請・連絡する</button>
       </div>
       <div class="card"><h2>申請・連絡の状況</h2>
         ${requests.length?requests.map(r=>`<div class="rec-row">
-          <div><div><span class="badge ${r.type==='paid_leave'?'badge-confirmed':'badge-pending'}" style="margin-right:6px;">${r.type==='paid_leave'?'有給':'欠勤'}</span>${r.date}</div>
+          <div><div><span class="badge ${r.type.startsWith('paid_leave')?'badge-confirmed':'badge-pending'}" style="margin-right:6px;">${leaveLabel(r.type)}</span>${r.date}</div>
             <div class="hint">理由：${escapeHtml(r.reason)}</div>
             ${r.status==='rejected'&&r.admin_note?`<div class="hint">却下理由：${escapeHtml(r.admin_note)}</div>`:''}
           </div>
@@ -518,13 +541,13 @@ async function mountUserTab(){
       const ds=y+'-'+p2(m+1)+'-'+p2(d);
       const dayStr=ds.replace(/-/g,'/');
       const dayRecs=monthRecs.filter(r=>fmtDate(r.timestamp)===dayStr);
-      const inRec=dayRecs.find(r=>r.type==='clock_in');
-      const outRec=dayRecs.find(r=>r.type==='clock_out');
+      const inRec=dayRecs.sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).find(r=>r.type==='clock_in');
+      const outRec=dayRecs.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).find(r=>r.type==='clock_out');
       const leave=leaves.find(r=>r.date===ds&&r.status==='approved');
-      let workMin=null;
-      if(inRec&&outRec){workMin=Math.round((new Date(outRec.timestamp)-new Date(inRec.timestamp))/60000);totalWork+=workMin;}
-      if(leave&&leave.type==='paid_leave')paidDays++;
-      if(leave&&leave.type==='absence')absenceDays++;
+      const workMin=calcWorkMin(dayRecs);
+      if(workMin!=null)totalWork+=workMin;
+      if(leave)paidDays+=leave.type.startsWith('paid_leave')?leaveDays(leave.type):0;
+      if(leave)absenceDays+=leave.type.startsWith('absence')?leaveDays(leave.type):0;
       const wd=new Date(y,m,d).getDay();
       const wdStr=['日','月','火','水','木','金','土'][wd];
       const weekend=wd===0||wd===6;
@@ -532,7 +555,7 @@ async function mountUserTab(){
         <td>${d}（${wdStr}）</td>
         <td>${inRec?fmtTime(inRec.timestamp):leave?'—':''}</td>
         <td>${outRec?fmtTime(outRec.timestamp):leave?'—':''}</td>
-        <td>${workMin!=null?Math.floor(workMin/60)+'h'+p2(workMin%60)+'m':leave?`<span class="badge ${leave.type==='paid_leave'?'badge-confirmed':'badge-rejected'}">${leave.type==='paid_leave'?'有給':'欠勤'}</span>`:''}</td>
+        <td>${workMin!=null?Math.floor(workMin/60)+'h'+p2(workMin%60)+'m':leave?`<span class="badge ${leave.type.startsWith('paid_leave')?'badge-confirmed':'badge-rejected'}">${leaveLabel(leave.type)}</span>`:''}</td>
       </tr>`;
     }
     const th=Math.floor(totalWork/60),tm=totalWork%60;
@@ -740,11 +763,11 @@ async function mountAdminKintai(){
       const ds=y+'-'+p2(m+1)+'-'+p2(d);
       const dayStr=ds.replace(/-/g,'/');
       const dayRecs=recs.filter(r=>fmtDate(r.timestamp)===dayStr);
-      const inRec=dayRecs.find(r=>r.type==='clock_in');
-      const outRec=dayRecs.find(r=>r.type==='clock_out');
+      const inRec=dayRecs.sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).find(r=>r.type==='clock_in');
+      const outRec=dayRecs.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).find(r=>r.type==='clock_out');
       const leave=leaves.find(r=>r.date===ds);
-      let workMin=null;
-      if(inRec&&outRec){workMin=Math.round((new Date(outRec.timestamp)-new Date(inRec.timestamp))/60000);totalWork+=workMin;}
+      const workMin=calcWorkMin(dayRecs);
+      if(workMin!=null)totalWork+=workMin;
       const wd=new Date(y,m,d).getDay();
       const wdStr=['日','月','火','水','木','金','土'][wd];
       const weekend=wd===0||wd===6;
@@ -752,19 +775,25 @@ async function mountAdminKintai(){
         <td>${d}(${wdStr})</td>
         <td>${inRec?fmtTime(inRec.timestamp)+(inRec.from_reservation?'<span class="badge badge-confirmed" style="margin-left:4px;font-size:10px;">予約</span>':''):leave?'—':''}</td>
         <td>${outRec?fmtTime(outRec.timestamp)+(outRec.from_reservation?'<span class="badge badge-confirmed" style="margin-left:4px;font-size:10px;">予約</span>':''):leave?'—':''}</td>
-        <td>${workMin!=null?Math.floor(workMin/60)+'h'+p2(workMin%60)+'m':leave?`<span class="badge ${leave.type==='paid_leave'?'badge-confirmed':'badge-rejected'}">${leave.type==='paid_leave'?'有給':'欠勤'}</span>`:''}</td>
+        <td>${workMin!=null?Math.floor(workMin/60)+'h'+p2(workMin%60)+'m':leave?`<span class="badge ${leave.type.startsWith('paid_leave')?'badge-confirmed':'badge-rejected'}">${leaveLabel(leave.type)}</span>`:''}</td>
+        <td>${dayRecs.map(r=>`<button class="btn btn-sm" style="background:var(--red-soft);color:var(--red);margin:1px;" data-admdelatt="${r.id}">${r.type==='clock_in'?'出':'退'}${fmtTime(r.timestamp)}</button>`).join('')}</td>
       </tr>`;
     }
     const th=Math.floor(totalWork/60),tm2=totalWork%60;
     html+=`<div class="card" style="padding:12px;margin-bottom:12px;">
       <h3 style="margin-bottom:6px;">${escapeHtml(u.name)}<span class="hint" style="font-weight:400;margin-left:8px;">${escapeHtml(u.email)}</span><span style="float:right;font-size:12px;color:var(--ink-soft);">総勤務 ${th}h${p2(tm2)}m</span></h3>
-      <table><thead><tr><th>日</th><th>出勤</th><th>退勤</th><th>時間</th></tr></thead><tbody>${rows}</tbody></table>
+      <table><thead><tr><th>日</th><th>出勤</th><th>退勤</th><th>時間</th><th>削除</th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
   }
   body.innerHTML=html;
   document.getElementById('prevMonthA').addEventListener('click',()=>{state.viewMonth=new Date(y,m-1,1);mountAdminKintai();});
   document.getElementById('nextMonthA').addEventListener('click',()=>{state.viewMonth=new Date(y,m+1,1);mountAdminKintai();});
   document.getElementById('exportExcel').addEventListener('click',()=>exportExcel(users,allRecords,allLeaves,y,m));
+  document.querySelectorAll('[data-admdelatt]').forEach(btn=>btn.addEventListener('click',async()=>{
+    if(!confirm('この打刻を削除しますか？'))return;
+    await deleteAttendance(btn.getAttribute('data-admdelatt'));
+    showToast('削除しました');mountAdminKintai();
+  }));
 }
 
 function exportExcel(users,allRecords,allLeaves,y,m){
@@ -779,13 +808,14 @@ function exportExcel(users,allRecords,allLeaves,y,m){
       const ds=y+'-'+p2(m+1)+'-'+p2(d);
       const dayStr=ds.replace(/-/g,'/');
       const dayRecs=recs.filter(r=>fmtDate(r.timestamp)===dayStr);
-      const inRec=dayRecs.find(r=>r.type==='clock_in');
-      const outRec=dayRecs.find(r=>r.type==='clock_out');
+      const inRec=dayRecs.sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).find(r=>r.type==='clock_in');
+      const outRec=dayRecs.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).find(r=>r.type==='clock_out');
       const leave=leaves.find(r=>r.date===ds);
-      let workStr='',note='';
-      if(inRec&&outRec){const wm=Math.round((new Date(outRec.timestamp)-new Date(inRec.timestamp))/60000);workStr=Math.floor(wm/60)+'h'+p2(wm%60)+'m';}
+      const wm=calcWorkMin(dayRecs);
+      const workStr=wm!=null?Math.floor(wm/60)+'h'+p2(wm%60)+'m':'';
+      let note='';
       if(inRec?.from_reservation||outRec?.from_reservation)note='予約打刻';
-      if(leave)note=leave.type==='paid_leave'?'有給':'欠勤';
+      if(leave)note=leaveLabel(leave.type);
       const wd=new Date(y,m,d).getDay();
       csv+=`"${u.name}","${dayStr}","${wdStr[wd]}","${inRec?fmtTime(inRec.timestamp):''}","${outRec?fmtTime(outRec.timestamp):''}","${workStr}","${note}"\n`;
     }
