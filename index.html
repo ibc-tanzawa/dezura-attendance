@@ -3,9 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="でずら！">
+<meta name="theme-color" content="#173A5E">
 <title>勤怠管理</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
   --bg:#F5F4EF;--surface:#FFFFFF;--ink:#1C1C1A;--ink-soft:#6B675E;--line:#DEDACE;
@@ -16,61 +21,70 @@
   --font-body:'Noto Sans JP','Hiragino Sans','Yu Gothic',sans-serif;
   --font-mono:'JetBrains Mono','SF Mono',monospace;
 }
+body.dark{
+  --bg:#14151A;--surface:#1E2027;--ink:#ECEAE4;--ink-soft:#9A968C;--line:#33363F;
+  --red-soft:#3A2224;
+}
 *{box-sizing:border-box;}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased;}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased;transition:background .2s;}
 #root{min-height:100vh;display:flex;flex-direction:column;}
 .wrap{max-width:960px;margin:0 auto;width:100%;padding:16px;}
 .topbar{background:var(--navy);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:20;}
-.brand{display:flex;align-items:center;gap:10px;font-family:var(--font-display);font-weight:700;letter-spacing:.02em;}
-.brand .mark{width:auto;height:30px;padding:0 9px;border-radius:8px;background:linear-gradient(135deg,var(--amber),var(--gold));display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;color:#1C1C1A;font-size:13px;white-space:nowrap;}
-.topbar .userinfo{font-size:13px;opacity:.9;display:flex;align-items:center;gap:12px;}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-family:var(--font-body);font-weight:700;font-size:14px;cursor:pointer;transition:transform .08s ease,filter .15s ease;}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--font-display);font-weight:700;}
+.brand .mark{height:30px;padding:0 9px;border-radius:8px;background:linear-gradient(135deg,var(--amber),var(--gold));display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;color:#1C1C1A;font-size:13px;white-space:nowrap;}
+.topbar .userinfo{font-size:13px;opacity:.9;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.btn{border:none;border-radius:10px;padding:10px 16px;font-family:var(--font-body);font-weight:700;font-size:14px;cursor:pointer;transition:transform .08s;}
 .btn:active{transform:scale(.97);}
 .btn-ghost{background:rgba(255,255,255,.12);color:#fff;}
-.btn-ghost:hover{background:rgba(255,255,255,.2);}
 .btn-navy{background:var(--navy);color:#fff;}
-.btn-navy:hover{background:var(--navy-dark);}
 .btn-green{background:var(--green);color:#fff;}
-.btn-green:hover{background:var(--green-dark);}
+.btn-amber{background:var(--amber);color:#fff;}
 .btn-line{background:transparent;color:var(--navy);border:1.5px solid var(--line);}
-.btn-line:hover{border-color:var(--navy);}
+body.dark .btn-line{color:var(--ink);}
+.btn-red{background:var(--red-soft);color:var(--red);}
 .btn-sm{padding:6px 12px;font-size:12.5px;border-radius:8px;}
 .btn:disabled{opacity:.45;cursor:not-allowed;}
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:20px;overflow-x:auto;}
 .tab{padding:10px 12px;font-weight:700;font-size:13px;color:var(--ink-soft);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;}
 .tab.active{color:var(--navy);border-color:var(--amber);}
+body.dark .tab.active{color:var(--ink);}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px;}
 h1,h2,h3{font-family:var(--font-display);margin:0 0 8px;}
 h2{font-size:19px;}h3{font-size:15px;color:var(--ink-soft);font-weight:700;}
 label{display:block;font-size:12.5px;color:var(--ink-soft);font-weight:700;margin:12px 0 5px;}
-input,textarea,select{width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:9px;font-size:14.5px;font-family:var(--font-body);background:#fff;color:var(--ink);}
-input:focus,textarea:focus,select:focus{outline:2px solid var(--navy);outline-offset:1px;border-color:var(--navy);}
+input,textarea,select{width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:9px;font-size:14.5px;font-family:var(--font-body);background:var(--surface);color:var(--ink);}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--navy);border-color:var(--navy);}
 .hint{font-size:12px;color:var(--ink-soft);margin-top:4px;}
 .error-box{background:var(--red-soft);color:var(--red);border-radius:9px;padding:10px 12px;font-size:13px;font-weight:600;margin-top:10px;}
+.warn-box{background:#FBEFD9;color:#8A6414;border-radius:9px;padding:10px 12px;font-size:13px;font-weight:600;margin-bottom:14px;}
+body.dark .warn-box{background:#3A2E10;color:#F0C97A;}
 .center-screen{flex:1;display:flex;align-items:center;justify-content:center;padding:24px;}
 .auth-card{max-width:420px;width:100%;}
 .auth-tabs{display:flex;background:#EFEDE5;border-radius:10px;padding:4px;margin-bottom:18px;}
+body.dark .auth-tabs{background:#2A2C34;}
 .auth-tab{flex:1;text-align:center;padding:9px;border-radius:7px;font-weight:700;font-size:13.5px;cursor:pointer;color:var(--ink-soft);}
-.auth-tab.active{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(0,0,0,.08);}
-.instrument{background:var(--navy-dark);border-radius:16px;padding:22px 20px;color:#fff;text-align:center;margin-bottom:18px;border:1px solid #0A1D33;}
-.instrument .clock{font-family:var(--font-mono);font-size:44px;font-weight:700;letter-spacing:.03em;color:#F4D58D;}
-.instrument .date{font-family:var(--font-mono);font-size:13px;color:#9FB4C8;margin-top:4px;letter-spacing:.08em;}
+.auth-tab.active{background:var(--surface);color:var(--navy);box-shadow:0 1px 3px rgba(0,0,0,.08);}
+body.dark .auth-tab.active{color:var(--ink);}
+.instrument{background:var(--navy-dark);border-radius:16px;padding:22px 20px;color:#fff;text-align:center;margin-bottom:18px;}
+.instrument .clock{font-family:var(--font-mono);font-size:44px;font-weight:700;color:#F4D58D;}
+.instrument .date{font-family:var(--font-mono);font-size:13px;color:#9FB4C8;margin-top:4px;}
 .instrument .status{margin-top:10px;font-size:13px;font-weight:700;padding:5px 12px;border-radius:20px;display:inline-block;}
 .status-in{background:rgba(28,124,75,.25);color:#7FE0AB;}
 .status-out{background:rgba(217,115,13,.22);color:#F5B26B;}
+.status-break{background:rgba(180,180,60,.25);color:#E8E07A;}
 .offline-bar{background:#7B4F00;color:#FFE0A0;text-align:center;font-size:12.5px;font-weight:700;padding:7px;position:sticky;top:58px;z-index:19;}
-.punch-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;}
-.punch-btn{border:none;border-radius:16px;padding:30px 10px;font-family:var(--font-display);font-size:22px;font-weight:900;color:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:transform .08s ease,filter .15s ease;}
+.punch-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px;}
+.punch-btn{border:none;border-radius:16px;padding:30px 10px;font-family:var(--font-display);font-size:22px;font-weight:900;color:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;}
 .punch-btn:active{transform:scale(.96);}
-.punch-btn .sub{font-family:var(--font-mono);font-size:12px;font-weight:500;opacity:.85;}
+.punch-btn .sub{font-family:var(--font-mono);font-size:12px;opacity:.85;}
 .punch-in{background:linear-gradient(160deg,var(--green),var(--green-dark));}
 .punch-out{background:linear-gradient(160deg,var(--amber),var(--amber-dark));}
+.break-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;}
+.break-btn{border:1.5px solid var(--line);background:var(--surface);color:var(--ink-soft);border-radius:12px;padding:12px;font-weight:700;font-size:14px;cursor:pointer;}
 .reserve-card{background:linear-gradient(135deg,#1A2E45,#0F2740);border-radius:12px;padding:14px 16px;margin-bottom:18px;color:#fff;}
-.reserve-card .rc-label{font-size:11px;color:#9FB4C8;font-weight:700;letter-spacing:.06em;margin-bottom:6px;}
-.reserve-card .rc-items{display:flex;flex-direction:column;gap:8px;}
-.reserve-card .rc-item{display:flex;justify-content:space-between;align-items:center;font-size:14px;}
-.reserve-card .rc-time{font-family:var(--font-mono);font-weight:700;color:#F4D58D;}
-.reserve-card .rc-type{font-size:12px;padding:3px 8px;border-radius:12px;}
+.reserve-card .rc-label{font-size:11px;color:#9FB4C8;font-weight:700;margin-bottom:6px;}
+.reserve-card .rc-item{display:flex;justify-content:space-between;align-items:center;font-size:14px;margin-top:6px;}
+.rc-type{font-size:12px;padding:3px 8px;border-radius:12px;}
 .rc-in{background:rgba(28,124,75,.3);color:#7FE0AB;}
 .rc-out{background:rgba(217,115,13,.3);color:#F5B26B;}
 .rec-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px;}
@@ -79,34 +93,41 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--navy);outline-of
 .dot{width:9px;height:9px;border-radius:50%;}
 .dot-in{background:var(--green);}
 .dot-out{background:var(--amber);}
+.dot-break{background:#B8B03C;}
 .rec-time{font-family:var(--font-mono);font-weight:700;}
 .badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;}
 .badge-pending{background:#FBEFD9;color:#8A6414;}
 .badge-approved{background:#DCF0E3;color:var(--green-dark);}
 .badge-rejected{background:var(--red-soft);color:var(--red);}
 .badge-confirmed{background:#E5ECF3;color:var(--navy);}
+body.dark .badge-confirmed{background:#28374A;color:#9FC1E8;}
 .badge-offline{background:#3A2800;color:#FFD080;}
-.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--navy-dark);color:#fff;padding:12px 20px;border-radius:10px;font-size:13.5px;font-weight:600;box-shadow:0 8px 20px rgba(0,0,0,.25);z-index:100;opacity:0;transition:opacity .25s ease;pointer-events:none;}
-.toast.show{opacity:1;}
+.badge-lock{background:#E8E5DC;color:#6B675E;}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--navy-dark);color:#fff;padding:12px 20px;border-radius:10px;font-size:13.5px;font-weight:600;box-shadow:0 8px 20px rgba(0,0,0,.25);z-index:100;opacity:0;transition:opacity .25s;pointer-events:none;display:flex;gap:12px;align-items:center;}
+.toast.show{opacity:1;pointer-events:auto;}
+.toast button{background:var(--amber);border:none;color:#fff;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer;}
 .modal-bg{position:fixed;inset:0;background:rgba(20,20,18,.5);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px;}
-.modal{background:#fff;border-radius:var(--radius);padding:22px;max-width:440px;width:100%;max-height:88vh;overflow-y:auto;}
-.terms-body{font-size:13.5px;line-height:1.9;color:var(--ink-soft);max-height:50vh;overflow-y:auto;padding-right:6px;}
+.modal{background:var(--surface);border-radius:var(--radius);padding:22px;max-width:440px;width:100%;max-height:88vh;overflow-y:auto;}
+.terms-body{font-size:13.5px;line-height:1.9;color:var(--ink-soft);max-height:50vh;overflow-y:auto;}
 .terms-body h4{color:var(--ink);font-size:14px;margin:14px 0 4px;}
 .checkline{display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:13px;}
 .checkline input{width:auto;margin-top:3px;}
-table{width:100%;border-collapse:collapse;font-size:13.5px;}
-th{text-align:left;font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;padding:8px 6px;border-bottom:1.5px solid var(--line);}
-td{padding:9px 6px;border-bottom:1px solid var(--line);font-family:var(--font-mono);font-size:12.8px;}
+table{width:100%;border-collapse:collapse;font-size:12.8px;}
+th{text-align:left;font-size:11px;color:var(--ink-soft);padding:8px 4px;border-bottom:1.5px solid var(--line);}
+td{padding:8px 4px;border-bottom:1px solid var(--line);font-family:var(--font-mono);font-size:12.2px;}
 .gps-link{color:var(--navy);font-weight:700;text-decoration:none;}
-.gps-link:hover{text-decoration:underline;}
+body.dark .gps-link{color:#9FC1E8;}
 .empty{text-align:center;color:var(--ink-soft);font-size:13.5px;padding:26px 10px;}
-.user-list-item{display:flex;justify-content:space-between;align-items:center;padding:13px 4px;border-bottom:1px solid var(--line);cursor:pointer;}
-.user-list-item:hover{background:#FAF9F5;}
+.user-list-item{display:flex;justify-content:space-between;align-items:center;padding:13px 4px;border-bottom:1px solid var(--line);gap:8px;flex-wrap:wrap;}
 .footer-link{text-align:center;padding:14px;font-size:12px;color:var(--ink-soft);}
 .footer-link a{color:var(--navy);cursor:pointer;font-weight:700;}
-.month-nav{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
-.month-nav button{background:none;border:1.5px solid var(--line);border-radius:8px;padding:6px 14px;cursor:pointer;font-size:14px;font-weight:700;}
+body.dark .footer-link a{color:#9FC1E8;}
+.month-nav{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
+.month-nav button.nav{background:none;border:1.5px solid var(--line);border-radius:8px;padding:6px 14px;cursor:pointer;font-weight:700;color:var(--ink);}
 .month-nav span{font-family:var(--font-display);font-weight:700;font-size:16px;}
+.presence-item{display:flex;justify-content:space-between;align-items:center;padding:12px 4px;border-bottom:1px solid var(--line);}
+.row-miss{color:var(--red)!important;}
+.row-holiday{color:var(--red)!important;}
 @media(max-width:520px){
   .instrument .clock{font-size:34px;}
   .punch-btn{padding:24px 8px;font-size:18px;}
@@ -117,39 +138,49 @@ td{padding:9px 6px;border-bottom:1px solid var(--line);font-family:var(--font-mo
 <div id="root"></div>
 <div id="toast" class="toast"></div>
 <script>
-/* ===== Service Worker登録 ===== */
+/* ===== バージョン / SW ===== */
+const APP_VERSION='2.0.0';
 if('serviceWorker' in navigator){
   const swCode=`
-const CACHE='dezura-v1';
-const ASSETS=[location.pathname];
-self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));
+const CACHE='dezura-${APP_VERSION}';
+self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname])));});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
 self.addEventListener('fetch',e=>{
-  if(e.request.url.includes('supabase.co')){e.respondWith(fetch(e.request));return;}
-  e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{
-    const clone=res.clone();
-    caches.open(CACHE).then(c=>c.put(e.request,clone));
-    return res;
-  })));
+  if(e.request.url.includes('supabase.co')||e.request.method!=='GET'){e.respondWith(fetch(e.request));return;}
+  e.respondWith(fetch(e.request).then(res=>{const cl=res.clone();caches.open(CACHE).then(c=>c.put(e.request,cl));return res;}).catch(()=>caches.match(e.request)));
 });`;
-  const blob=new Blob([swCode],{type:'application/javascript'});
-  const url=URL.createObjectURL(blob);
-  navigator.serviceWorker.register(url).catch(()=>{});
+  navigator.serviceWorker.register(URL.createObjectURL(new Blob([swCode],{type:'application/javascript'}))).catch(()=>{});
 }
+/* PWA manifest */
+try{
+  const mf={name:'でずら！勤怠管理',short_name:'でずら！',display:'standalone',start_url:'.',background_color:'#F5F4EF',theme_color:'#173A5E'};
+  const l=document.createElement('link');l.rel='manifest';
+  l.href=URL.createObjectURL(new Blob([JSON.stringify(mf)],{type:'application/json'}));
+  document.head.appendChild(l);
+}catch(e){}
+/* ダークモード */
+if(localStorage.getItem('dezura_dark')==='1')document.body.classList.add('dark');
+function toggleDark(){document.body.classList.toggle('dark');localStorage.setItem('dezura_dark',document.body.classList.contains('dark')?'1':'0');}
 
 /* ===== Supabase ===== */
 const SB_URL='https://fzgvrropxbsxoffukhax.supabase.co';
 const SB_KEY='sb_publishable_aGGnCru9be1hgd7L5-RWQg_bYdaIiNR';
 const ADMIN_PASSCODE='K7mP2xQn9R';
-
-async function sbFetch(path,method='GET',body=null){
-  const opts={method,headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}};
+async function sbFetch(path,method='GET',body=null,extraHeaders={}){
+  const opts={method,headers:Object.assign({'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY},extraHeaders)};
   if(body)opts.body=JSON.stringify(body);
   const r=await fetch(SB_URL+'/rest/v1/'+path,opts);
   if(!r.ok){const e=await r.text();throw new Error(e);}
   const t=await r.text();return t?JSON.parse(t):[];
 }
-async function sbInsert(table,row){return sbFetch(table,'POST',row);}
-async function sbUpdate(table,filter,patch){return sbFetch(table+'?'+filter,'PATCH',patch);}
+async function sbInsert(t,row){return sbFetch(t,'POST',row);}
+async function sbUpsert(t,row){return sbFetch(t,'POST',row,{'Prefer':'resolution=merge-duplicates'});}
+async function sbUpdate(t,f,patch){return sbFetch(t+'?'+f,'PATCH',patch);}
+
+/* ===== 操作ログ ===== */
+function logAudit(actor,action,target,detail){
+  sbInsert('audit_logs',{id:genId(),actor,action,target:target||'',detail:detail||'',created_at:new Date().toISOString()}).catch(()=>{});
+}
 
 /* ===== オフラインキュー ===== */
 const QUEUE_KEY='dezura_offline_queue';
@@ -178,22 +209,78 @@ function renderOfflineBar(){
 /* ===== ユーティリティ ===== */
 function genId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
 function p2(n){return String(n).padStart(2,'0');}
-function leaveLabel(type){return{paid_leave:'有給（全日）',paid_leave_am:'有給（午前）',paid_leave_pm:'有給（午後）',absence:'欠勤（全日）',absence_am:'欠勤（午前）',absence_pm:'欠勤（午後）'}[type]||type;}
-function leaveDays(type){return(type==='paid_leave'||type==='absence')?1:0.5;}
-async function deleteAttendance(id){return sbFetch('attendance?id=eq.'+id,'DELETE');}
-function calcWorkMin(dayRecs){
-  const ins=dayRecs.filter(r=>r.type==='clock_in').sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
-  const outs=dayRecs.filter(r=>r.type==='clock_out').sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
-  if(!ins.length||!outs.length)return null;
-  return Math.round((new Date(outs[outs.length-1].timestamp)-new Date(ins[0].timestamp))/60000);
-}
+function fmtMin(min){return Math.floor(min/60)+'h'+p2(min%60)+'m';}
 function fmtDateTime(iso){if(!iso)return'-';const d=new Date(iso);return d.getFullYear()+'/'+p2(d.getMonth()+1)+'/'+p2(d.getDate())+' '+p2(d.getHours())+':'+p2(d.getMinutes());}
 function fmtTime(iso){if(!iso)return'-';const d=new Date(iso);return p2(d.getHours())+':'+p2(d.getMinutes());}
 function fmtDate(iso){if(!iso)return'-';const d=new Date(iso);return d.getFullYear()+'/'+p2(d.getMonth()+1)+'/'+p2(d.getDate());}
 function toDatetimeLocal(iso){const d=new Date(iso);return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate())+'T'+p2(d.getHours())+':'+p2(d.getMinutes());}
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.remove('show'),2600);}
+function leaveLabel(t){return{paid_leave:'有給（全日）',paid_leave_am:'有給（午前）',paid_leave_pm:'有給（午後）',absence:'欠勤（全日）',absence_am:'欠勤（午前）',absence_pm:'欠勤（午後）'}[t]||t;}
+function leaveDays(t){return(t==='paid_leave'||t==='absence')?1:0.5;}
+function typeLabel(t){return{clock_in:'出勤',clock_out:'退勤',break_start:'休憩開始',break_end:'休憩終了'}[t]||t;}
+function dotClass(t){return t==='clock_in'?'dot-in':t==='clock_out'?'dot-out':'dot-break';}
+function showToast(msg){const t=document.getElementById('toast');t.innerHTML=escapeHtml(msg);t.classList.add('show');clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.remove('show'),2600);}
+function showToastAction(msg,btnLabel,fn,ms){
+  const t=document.getElementById('toast');
+  t.innerHTML=escapeHtml(msg)+' <button id="toastActBtn">'+escapeHtml(btnLabel)+'</button>';
+  t.classList.add('show');
+  document.getElementById('toastActBtn').addEventListener('click',()=>{t.classList.remove('show');fn();});
+  clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.remove('show'),ms||5000);
+}
 function getGPS(){return new Promise(resolve=>{if(!navigator.geolocation){resolve(null);return;}navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:Math.round(p.coords.accuracy)}),()=>resolve(null),{enableHighAccuracy:true,timeout:8000,maximumAge:0});});}
+function haversine(lat1,lng1,lat2,lng2){
+  const R=6371000,rad=x=>x*Math.PI/180;
+  const dLat=rad(lat2-lat1),dLng=rad(lng2-lng1);
+  const a=Math.sin(dLat/2)**2+Math.cos(rad(lat1))*Math.cos(rad(lat2))*Math.sin(dLng/2)**2;
+  return Math.round(R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));
+}
+
+/* ===== 祝日 ===== */
+let holidayMap={};
+async function loadHolidays(){
+  try{
+    const cached=JSON.parse(localStorage.getItem('dezura_holidays')||'null');
+    if(cached&&Date.now()-cached.ts<30*86400000){holidayMap=cached.map;return;}
+    const r=await fetch('https://holidays-jp.github.io/api/v1/date.json');
+    holidayMap=await r.json();
+    localStorage.setItem('dezura_holidays',JSON.stringify({ts:Date.now(),map:holidayMap}));
+  }catch(e){}
+}
+
+/* ===== 勤務時間計算 ===== */
+function breakMinutes(dayRecs){
+  const sorted=[...dayRecs].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+  let total=0,start=null;
+  for(const r of sorted){
+    if(r.type==='break_start')start=new Date(r.timestamp);
+    else if(r.type==='break_end'&&start){total+=(new Date(r.timestamp)-start)/60000;start=null;}
+  }
+  return Math.round(total);
+}
+function nightMinutes(s,e){
+  if(!s||!e||e<=s)return 0;
+  let total=0,cur=new Date(s.getFullYear(),s.getMonth(),s.getDate());
+  while(cur<e){
+    const w=[[new Date(cur).setHours(0,0,0,0),new Date(cur).setHours(5,0,0,0)],[new Date(cur).setHours(22,0,0,0),new Date(cur).setHours(24,0,0,0)]];
+    for(const[ws,we]of w){const os=Math.max(s,ws),oe=Math.min(e,we);if(oe>os)total+=(oe-os)/60000;}
+    cur.setDate(cur.getDate()+1);
+  }
+  return Math.round(total);
+}
+function calcDayStats(dayRecs){
+  const ins=dayRecs.filter(r=>r.type==='clock_in').sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+  const outs=dayRecs.filter(r=>r.type==='clock_out').sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+  const inRec=ins[0]||null,outRec=outs[outs.length-1]||null;
+  let workMin=null,overMin=0,nightMin=0;
+  const brMin=breakMinutes(dayRecs);
+  if(inRec&&outRec){
+    const gross=Math.round((new Date(outRec.timestamp)-new Date(inRec.timestamp))/60000);
+    workMin=Math.max(0,gross-brMin);
+    overMin=Math.max(0,workMin-480);
+    nightMin=nightMinutes(new Date(inRec.timestamp),new Date(outRec.timestamp));
+  }
+  return{inRec,outRec,workMin,brMin,overMin,nightMin};
+}
 
 /* ===== API ===== */
 async function registerUser(name,email,password){
@@ -206,20 +293,26 @@ async function registerUser(name,email,password){
 }
 async function loginUser(email,password){
   try{
-    const rows=await sbFetch('users?email=eq.'+encodeURIComponent(email)+'&pass=eq.'+encodeURIComponent(password)+'&select=email,name');
+    const rows=await sbFetch('users?email=eq.'+encodeURIComponent(email)+'&pass=eq.'+encodeURIComponent(password)+'&select=email,name,disabled');
     if(!rows.length)return{error:'メールアドレスまたはパスワードが違います。'};
-    return{ok:true,user:rows[0]};
+    if(rows[0].disabled)return{error:'このアカウントは無効化されています。管理者にお問い合わせください。'};
+    return{ok:true,user:{email:rows[0].email,name:rows[0].name}};
   }catch(e){return{error:'ログインエラー: '+e.message};}
 }
-async function punch(email,type){
-  const gps=await getGPS();
-  const row={id:genId(),email,type,timestamp:new Date().toISOString(),gps_lat:gps?gps.lat:null,gps_lng:gps?gps.lng:null,gps_accuracy:gps?gps.accuracy:null,corrected:false};
+async function punch(email,type,site){
+  const needGps=(type==='clock_in'||type==='clock_out');
+  const gps=needGps?await getGPS():null;
+  const row={id:genId(),email,type,timestamp:new Date().toISOString(),gps_lat:gps?gps.lat:null,gps_lng:gps?gps.lng:null,gps_accuracy:gps?gps.accuracy:null,corrected:false,deleted:false,site:site||null};
   if(navigator.onLine){await sbInsert('attendance',row);}
   else{queueAdd({table:'attendance',row});}
   return row;
 }
-async function getAttendance(email){try{return await sbFetch('attendance?email=eq.'+encodeURIComponent(email)+'&order=timestamp.desc');}catch(e){return[];}}
-async function getAllUsers(){try{return await sbFetch('users?select=email,name&order=created_at.asc');}catch(e){return[];}}
+async function getAttendance(email){try{return await sbFetch('attendance?email=eq.'+encodeURIComponent(email)+'&deleted=eq.false&order=timestamp.desc');}catch(e){return[];}}
+async function getAllUsers(){try{return await sbFetch('users?select=email,name,disabled,paid_leave_total&order=created_at.asc');}catch(e){return[];}}
+async function softDeleteAttendance(id,actor){
+  await sbUpdate('attendance','id=eq.'+id,{deleted:true});
+  logAudit(actor,'delete_att',id,'');
+}
 async function submitCorrection(email,recordId,type,oldTime,requestedTime,reason){
   await sbInsert('corrections',{id:genId(),email,record_id:recordId,type,old_time:oldTime,requested_time:requestedTime,reason,status:'pending',admin_note:'',created_at:new Date().toISOString()});
 }
@@ -228,38 +321,44 @@ async function getAllCorrections(){try{return await sbFetch('corrections?order=c
 async function approveCorrection(id,recordId,requestedTime){
   await sbUpdate('corrections','id=eq.'+id,{status:'approved'});
   await sbUpdate('attendance','id=eq.'+recordId,{timestamp:requestedTime,corrected:true});
+  logAudit('admin','approve_corr',id,'');
 }
-async function rejectCorrection(id,note){await sbUpdate('corrections','id=eq.'+id,{status:'rejected',admin_note:note||''});}
+async function rejectCorrection(id,note){await sbUpdate('corrections','id=eq.'+id,{status:'rejected',admin_note:note||''});logAudit('admin','reject_corr',id,note||'');}
 async function submitReservation(email,type,scheduledTime,reason){
-  await sbInsert('reservations',{id:genId(),email,type,scheduled_time:scheduledTime,reason,status:'registered',created_at:new Date().toISOString()});
+  await sbInsert('reservations',{id:genId(),email,type,scheduled_time:scheduledTime,reason,status:'registered',processed:false,created_at:new Date().toISOString()});
 }
 async function getReservations(email){try{return await sbFetch('reservations?email=eq.'+encodeURIComponent(email)+'&order=scheduled_time.asc');}catch(e){return[];}}
 async function deleteReservation(id){return sbFetch('reservations?id=eq.'+id,'DELETE');}
-async function getAllReservations(){try{return await sbFetch('reservations?order=created_at.desc');}catch(e){return[];}}
-
-/* ===== 予約自動打刻チェック ===== */
-async function checkAndFireReservations(email){
-  const now=new Date();
-  const reservations=await getReservations(email);
-  const pending=reservations.filter(r=>r.status==='registered'&&new Date(r.scheduled_time)<=now);
-  for(const r of pending){
-    // 予約由来フラグ付きで打刻
-    const gps=null; // 予約打刻はGPS不要
-    const row={id:genId(),email,type:r.type,timestamp:r.scheduled_time,gps_lat:null,gps_lng:null,gps_accuracy:null,corrected:false,from_reservation:true};
-    try{
-      await sbInsert('attendance',row);
-      await sbUpdate('reservations','id=eq.'+r.id,{status:'fired'});
-    }catch(e){}
-  }
-  return pending.length;
-}
 async function submitLeaveRequest(email,type,date,reason){
   await sbInsert('leave_requests',{id:genId(),email,type,date,reason,status:'pending',admin_note:'',created_at:new Date().toISOString()});
 }
 async function getLeaveRequests(email){try{return await sbFetch('leave_requests?email=eq.'+encodeURIComponent(email)+'&order=date.desc');}catch(e){return[];}}
 async function getAllLeaveRequests(){try{return await sbFetch('leave_requests?order=created_at.desc');}catch(e){return[];}}
-async function approveLeave(id){await sbUpdate('leave_requests','id=eq.'+id,{status:'approved'});}
-async function rejectLeave(id,note){await sbUpdate('leave_requests','id=eq.'+id,{status:'rejected',admin_note:note||''});}
+async function getApprovedLeaves(){try{return await sbFetch('leave_requests?status=eq.approved&order=date.asc');}catch(e){return[];}}
+async function approveLeave(id){await sbUpdate('leave_requests','id=eq.'+id,{status:'approved'});logAudit('admin','approve_leave',id,'');}
+async function rejectLeave(id,note){await sbUpdate('leave_requests','id=eq.'+id,{status:'rejected',admin_note:note||''});logAudit('admin','reject_leave',id,note||'');}
+async function getSites(){try{return await sbFetch('sites?active=eq.true&order=created_at.asc');}catch(e){return[];}}
+async function getAllSites(){try{return await sbFetch('sites?order=created_at.asc');}catch(e){return[];}}
+async function getSettings(){
+  try{const rows=await sbFetch('settings');const o={};rows.forEach(r=>o[r.key]=r.value);return o;}catch(e){return{};}
+}
+async function saveSetting(key,value){await sbUpsert('settings',{key,value:String(value)});}
+async function getClosings(){try{return await sbFetch('closings?closed=eq.true');}catch(e){return[];}}
+function isClosed(closings,ym){return closings.some(c=>c.month===ym&&c.closed);}
+async function autoProcessReservations(email){
+  const reservations=await getReservations(email);
+  const now=new Date();
+  const pending=reservations.filter(r=>!r.processed&&new Date(r.scheduled_time)<=now);
+  for(const r of pending){
+    try{
+      const gps=await getGPS();
+      const row={id:genId(),email,type:r.type,timestamp:r.scheduled_time,gps_lat:gps?gps.lat:null,gps_lng:gps?gps.lng:null,gps_accuracy:gps?gps.accuracy:null,corrected:false,deleted:false,from_reservation:true,site:null};
+      await sbInsert('attendance',row);
+      await sbUpdate('reservations','id=eq.'+r.id,{processed:true});
+      showToast(typeLabel(r.type)+'予約を自動打刻しました '+fmtTime(r.scheduled_time));
+    }catch(e){}
+  }
+}
 
 /* ===== 規約 ===== */
 const TERMS_HTML=`
@@ -271,7 +370,7 @@ const TERMS_HTML=`
 <h4>第6条（本規約について）</h4><p>本文書は運用開始にあたっての社内向けドラフトです。実運用にあたっては、個人情報保護法・労働基準法等の関連法令に照らし、社会保険労務士・弁護士等の確認を受けたうえで正式な規程として整備してください。</p>`;
 
 /* ===== 状態 ===== */
-let state={view:'login',currentUser:null,isAdmin:false,adminExpandedUser:null,adminTab:'users',userTab:'punch',correctionModal:null,viewMonth:new Date()};
+let state={view:'login',currentUser:null,isAdmin:false,adminExpandedUser:null,adminTab:'users',userTab:'punch',correctionModal:null,viewMonth:new Date(),histLimit:30};
 let clockTimer=null,pollTimer=null,authTab='login';
 const root=document.getElementById('root');
 
@@ -284,9 +383,8 @@ function render(){
   renderOfflineBar();
 }
 
-/* ===== 認証 ===== */
 function renderAuth(){return`<div class="center-screen"><div class="card auth-card">
-  <div style="text-align:center;margin-bottom:18px;"><div class="brand" style="justify-content:center;color:var(--navy);"><div class="mark">でずら！</div><h1 style="font-size:20px;">勤怠管理</h1></div></div>
+  <div style="text-align:center;margin-bottom:18px;"><div class="brand" style="justify-content:center;color:var(--navy);"><div class="mark">でずら！</div><h1 style="font-size:20px;color:var(--ink);">勤怠管理</h1></div></div>
   <div class="auth-tabs">
     <div class="auth-tab ${authTab==='login'?'active':''}" data-authtab="login">ログイン</div>
     <div class="auth-tab ${authTab==='register'?'active':''}" data-authtab="register">新規登録</div>
@@ -299,10 +397,11 @@ function renderAuth(){return`<div class="center-screen"><div class="card auth-ca
     `<div class="footer-link">利用にあたり <a id="openTermsLink">利用規約</a> をご確認ください</div>`}
 </div></div>`;}
 
-/* ===== ユーザーシェル ===== */
 function renderUserShell(){return`
   <div class="topbar"><div class="brand"><div class="mark">でずら！</div>勤怠管理</div>
-  <div class="userinfo">${escapeHtml(state.currentUser.name)} 様 <button class="btn btn-ghost btn-sm" id="logoutBtn">ログアウト</button></div></div>
+  <div class="userinfo">${escapeHtml(state.currentUser.name)} 様
+    <button class="btn btn-ghost btn-sm" id="darkBtn">🌓</button>
+    <button class="btn btn-ghost btn-sm" id="logoutBtn">ログアウト</button></div></div>
   <div class="wrap">
     <div class="tabs">
       <div class="tab ${state.userTab==='punch'?'active':''}" data-utab="punch">打刻</div>
@@ -315,35 +414,53 @@ function renderUserShell(){return`
     <div id="userTabBody">読み込み中...</div>
   </div>`;}
 
-/* ===== 管理者シェル ===== */
 function renderAdminShell(){return`
-  <div class="topbar"><div class="brand"><div class="mark">でずら！</div>勤怠管理｜管理者</div>
-  <div class="userinfo"><button class="btn btn-ghost btn-sm" id="adminRefreshBtn">更新</button><button class="btn btn-ghost btn-sm" id="adminLogoutBtn">ログアウト</button></div></div>
+  <div class="topbar"><div class="brand"><div class="mark">でずら！</div>管理者</div>
+  <div class="userinfo">
+    <button class="btn btn-ghost btn-sm" id="darkBtn">🌓</button>
+    <button class="btn btn-ghost btn-sm" id="adminRefreshBtn">更新</button>
+    <button class="btn btn-ghost btn-sm" id="adminLogoutBtn">ログアウト</button></div></div>
   <div class="wrap">
     <div class="tabs">
+      <div class="tab ${state.adminTab==='presence'?'active':''}" data-atab="presence">在席</div>
       <div class="tab ${state.adminTab==='users'?'active':''}" data-atab="users">ユーザー</div>
       <div class="tab ${state.adminTab==='corrections'?'active':''}" data-atab="corrections">修正依頼</div>
       <div class="tab ${state.adminTab==='leave'?'active':''}" data-atab="leave">有給・欠勤</div>
       <div class="tab ${state.adminTab==='kintai'?'active':''}" data-atab="kintai">出勤簿</div>
+      <div class="tab ${state.adminTab==='settings'?'active':''}" data-atab="settings">設定</div>
     </div>
     <div id="adminTabBody">読み込み中...</div>
   </div>`;}
 
 /* ===== イベント ===== */
+const FAIL_KEY='dezura_fail';
+function failGet(){try{return JSON.parse(localStorage.getItem(FAIL_KEY)||'{"n":0,"until":0}');}catch(e){return{n:0,until:0};}}
+function failSave(f){localStorage.setItem(FAIL_KEY,JSON.stringify(f));}
+
 function attachHandlers(){
   ['openTermsLink','openTermsLink3'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('click',openTermsModal);});
+  const darkBtn=document.getElementById('darkBtn');
+  if(darkBtn)darkBtn.addEventListener('click',toggleDark);
+
   if(state.view==='login'){
     document.querySelectorAll('[data-authtab]').forEach(el=>el.addEventListener('click',()=>{authTab=el.getAttribute('data-authtab');render();}));
     const loginBtn=document.getElementById('loginBtn');
     if(loginBtn)loginBtn.addEventListener('click',async()=>{
+      const f=failGet();
+      if(f.until>Date.now()){showAuthErr('試行回数超過。'+Math.ceil((f.until-Date.now())/1000)+'秒後に再試行してください。');return;}
       const email=document.getElementById('loginEmail').value.trim();
       const pass=document.getElementById('loginPass').value;
       if(!email||!pass){showAuthErr('入力してください。');return;}
       loginBtn.disabled=true;loginBtn.textContent='確認中...';
       const r=await loginUser(email,pass);
       loginBtn.disabled=false;loginBtn.textContent='ログイン';
-      if(r.error)showAuthErr(r.error);
-      else{state.view='user';state.currentUser=r.user;state.userTab='punch';saveSession(r.user);render();mountUserTab();}
+      if(r.error){
+        const nf={n:f.n+1,until:0};
+        if(nf.n>=5){nf.until=Date.now()+60000;nf.n=0;}
+        failSave(nf);
+        showAuthErr(r.error);
+      }
+      else{failSave({n:0,until:0});state.view='user';state.currentUser=r.user;state.userTab='punch';saveSession(r.user);render();mountUserTab();autoProcessReservations(r.user.email);}
     });
     const regBtn=document.getElementById('registerBtn');
     if(regBtn)regBtn.addEventListener('click',async()=>{
@@ -365,13 +482,13 @@ function attachHandlers(){
     const adminBtn=document.getElementById('adminLoginBtn');
     if(adminBtn)adminBtn.addEventListener('click',()=>{
       const pass=document.getElementById('adminPass').value;
-      if(pass===ADMIN_PASSCODE){state.view='admin';state.isAdmin=true;render();mountAdminTab();startPoll();}
+      if(pass===ADMIN_PASSCODE){state.view='admin';state.isAdmin=true;state.adminTab='presence';render();startPoll();}
       else showAuthErr('パスコードが違います。');
     });
   }
   if(state.view==='user'){
     document.getElementById('logoutBtn').addEventListener('click',()=>{stopPoll();clearSession();state.view='login';state.currentUser=null;render();});
-    document.querySelectorAll('[data-utab]').forEach(el=>el.addEventListener('click',()=>{state.userTab=el.getAttribute('data-utab');render();mountUserTab();}));
+    document.querySelectorAll('[data-utab]').forEach(el=>el.addEventListener('click',()=>{state.userTab=el.getAttribute('data-utab');state.histLimit=30;render();mountUserTab();}));
     mountUserTab();
   }
   if(state.view==='admin'){
@@ -390,57 +507,79 @@ async function mountUserTab(){
   const email=state.currentUser.email;
 
   if(state.userTab==='punch'){
-    const [records,reservations]=await Promise.all([getAttendance(email),getReservations(email)]);
-    const last=records[0];const isIn=last&&last.type==='clock_in';
+    const [records,reservations,sites]=await Promise.all([getAttendance(email),getReservations(email),getSites()]);
+    const last=records[0];
+    const st=last?last.type:null;
+    const statusText=st==='clock_in'||st==='break_end'?'現在：出勤中':st==='break_start'?'現在：休憩中':'現在：退勤中 / 未出勤';
+    const statusCls=st==='clock_in'||st==='break_end'?'status-in':st==='break_start'?'status-break':'status-out';
     const today=new Date().toDateString();
     const todays=records.filter(r=>new Date(r.timestamp).toDateString()===today).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
     const queue=queueGet().filter(q=>q.row.email===email);
-    // 今後の予約（未来のもの）
-    const upcoming=reservations.filter(r=>new Date(r.scheduled_time)>new Date()).sort((a,b)=>new Date(a.scheduled_time)-new Date(b.scheduled_time)).slice(0,3);
-    const reserveBlock=upcoming.length?`<div class="reserve-card">
-      <div class="rc-label">📅 出退勤予約</div>
-      <div class="rc-items">
-        ${upcoming.map(r=>`<div class="rc-item">
-          <span>${fmtDateTime(r.scheduled_time)}${r.reason?'　<span style="font-size:11px;opacity:.7;">'+escapeHtml(r.reason)+'</span>':''}</span>
-          <span class="rc-type ${r.type==='clock_in'?'rc-in':'rc-out'}">${r.type==='clock_in'?'出勤予定':'退勤予定'}</span>
-        </div>`).join('')}
-      </div></div>`:'';
+    const upcoming=reservations.filter(r=>!r.processed&&new Date(r.scheduled_time)>new Date()).slice(0,3);
+    // 退勤忘れ検知
+    let forgotWarn='';
+    const lastIn=records.find(r=>r.type==='clock_in');
+    if((st==='clock_in'||st==='break_start'||st==='break_end')&&lastIn&&(Date.now()-new Date(lastIn.timestamp))>12*3600000){
+      forgotWarn=`<div class="warn-box">⚠ 出勤から12時間以上経過しています。退勤打刻を忘れていませんか？</div>`;
+    }
+    const reserveBlock=upcoming.length?`<div class="reserve-card"><div class="rc-label">📅 出退勤予約</div>
+      ${upcoming.map(r=>`<div class="rc-item"><span>${fmtDateTime(r.scheduled_time)}${r.reason?' <span style="font-size:11px;opacity:.7;">'+escapeHtml(r.reason)+'</span>':''}</span><span class="rc-type ${r.type==='clock_in'?'rc-in':'rc-out'}">${r.type==='clock_in'?'出勤予定':'退勤予定'}</span></div>`).join('')}
+      </div>`:'';
+    const siteSel=sites.length?`<label>現場（任意）</label><select id="siteSel"><option value="">選択なし</option>${sites.map(s=>`<option value="${escapeHtml(s.name)}" ${localStorage.getItem('dezura_last_site')===s.name?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select><div style="height:12px;"></div>`:'';
     body.innerHTML=`
+      ${forgotWarn}
       <div class="instrument">
         <div class="clock" id="liveClock">--:--:--</div>
         <div class="date" id="liveDate">----/--/--</div>
-        <div class="status ${isIn?'status-in':'status-out'}">${isIn?'現在：出勤中':'現在：退勤中 / 未出勤'}</div>
+        <div class="status ${statusCls}">${statusText}</div>
       </div>
       ${reserveBlock}
+      ${siteSel}
       <div class="punch-grid">
         <button class="punch-btn punch-in" id="punchIn">出勤<span class="sub">CLOCK IN</span></button>
         <button class="punch-btn punch-out" id="punchOut">退勤<span class="sub">CLOCK OUT</span></button>
       </div>
+      <div class="break-grid">
+        <button class="break-btn" id="breakStart">☕ 休憩開始</button>
+        <button class="break-btn" id="breakEnd">▶ 休憩終了</button>
+      </div>
       <div class="card"><h3>本日の打刻</h3>
-        ${todays.length?todays.map(r=>`<div class="rec-row"><div class="rec-left"><span class="dot ${r.type==='clock_in'?'dot-in':'dot-out'}"></span>${r.type==='clock_in'?'出勤':'退勤'}</div><span class="rec-time">${fmtTime(r.timestamp)}</span></div>`).join(''):'<div class="empty">本日の打刻はまだありません</div>'}
-        ${queue.length?`<div style="margin-top:8px;"><span class="badge badge-offline">オフライン保存 ${queue.length}件（未送信）</span></div>`:''}
+        ${todays.length?todays.map(r=>`<div class="rec-row"><div class="rec-left"><span class="dot ${dotClass(r.type)}"></span>${typeLabel(r.type)}${r.site?' <span class="hint">@'+escapeHtml(r.site)+'</span>':''}</div><span class="rec-time">${fmtTime(r.timestamp)}</span></div>`).join(''):'<div class="empty">本日の打刻はまだありません</div>'}
+        ${queue.length?`<div style="margin-top:8px;"><span class="badge badge-offline">オフライン保存 ${queue.length}件</span></div>`:''}
       </div>`;
     document.getElementById('punchIn').addEventListener('click',()=>doPunch('clock_in'));
     document.getElementById('punchOut').addEventListener('click',()=>doPunch('clock_out'));
+    document.getElementById('breakStart').addEventListener('click',()=>doPunch('break_start'));
+    document.getElementById('breakEnd').addEventListener('click',()=>doPunch('break_end'));
     tickClock();
   }
   else if(state.userTab==='history'){
-    const [records,corrections]=await Promise.all([getAttendance(email),getCorrections(email)]);
+    const [records,corrections,closings]=await Promise.all([getAttendance(email),getCorrections(email),getClosings()]);
+    const shown=records.slice(0,state.histLimit);
     body.innerHTML=`
       <div class="card"><h2>打刻履歴</h2>
-        ${records.length?records.map(r=>`<div class="rec-row">
-          <div class="rec-left"><span class="dot ${r.type==='clock_in'?'dot-in':'dot-out'}"></span>
-            <div>${fmtDate(r.timestamp)} ${r.type==='clock_in'?'出勤':'退勤'} ${r.corrected?'<span class="badge badge-approved">修正済</span>':''} ${r.from_reservation?'<span class="badge badge-confirmed">予約</span>':''}</div>
+        ${shown.length?shown.map(r=>{
+          const ym=r.timestamp.slice(0,7);
+          const locked=isClosed(closings,ym);
+          return`<div class="rec-row">
+          <div class="rec-left"><span class="dot ${dotClass(r.type)}"></span>
+            <div>${fmtDate(r.timestamp)} ${typeLabel(r.type)}
+              ${r.corrected?'<span class="badge badge-approved">修正済</span>':''}
+              ${r.from_reservation?'<span class="badge badge-confirmed">予約</span>':''}
+              ${r.site?'<span class="hint">@'+escapeHtml(r.site)+'</span>':''}
+              ${locked?'<span class="badge badge-lock">🔒締め済</span>':''}
+            </div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
             <span class="rec-time">${fmtTime(r.timestamp)}</span>
-            <button class="btn btn-line btn-sm" data-fixrec="${r.id}" data-fixtype="${r.type}" data-fixtime="${r.timestamp}">修正</button>
-            <button class="btn btn-sm" style="background:var(--red-soft);color:var(--red);" data-delatt="${r.id}">削除</button>
-          </div></div>`).join(''):'<div class="empty">打刻履歴がありません</div>'}
+            ${locked?'':`<button class="btn btn-line btn-sm" data-fixrec="${r.id}" data-fixtype="${r.type}" data-fixtime="${r.timestamp}">修正</button>
+            <button class="btn btn-red btn-sm" data-delatt="${r.id}">削除</button>`}
+          </div></div>`;}).join(''):'<div class="empty">打刻履歴がありません</div>'}
+        ${records.length>state.histLimit?`<div style="text-align:center;margin-top:10px;"><button class="btn btn-line btn-sm" id="loadMore">さらに表示（残り${records.length-state.histLimit}件）</button></div>`:''}
       </div>
       <div class="card"><h2>修正依頼の状況</h2>
         ${corrections.length?corrections.map(c=>`<div class="rec-row">
-          <div><div>${c.type==='clock_in'?'出勤':'退勤'}：${fmtDateTime(c.old_time)} → ${fmtDateTime(c.requested_time)}</div>
+          <div><div>${typeLabel(c.type)}：${fmtDateTime(c.old_time)} → ${fmtDateTime(c.requested_time)}</div>
             <div class="hint">理由：${escapeHtml(c.reason)}</div>
             ${c.status==='rejected'&&c.admin_note?`<div class="hint">却下理由：${escapeHtml(c.admin_note)}</div>`:''}
           </div>
@@ -453,15 +592,17 @@ async function mountUserTab(){
     }));
     document.querySelectorAll('[data-delatt]').forEach(btn=>btn.addEventListener('click',async()=>{
       if(!confirm('この打刻を削除しますか？'))return;
-      await deleteAttendance(btn.getAttribute('data-delatt'));
+      await softDeleteAttendance(btn.getAttribute('data-delatt'),email);
       showToast('削除しました');mountUserTab();
     }));
+    const lm=document.getElementById('loadMore');
+    if(lm)lm.addEventListener('click',()=>{state.histLimit+=30;mountUserTab();});
   }
   else if(state.userTab==='reserve'){
     const reservations=await getReservations(email);
     const now=new Date();
     const upcoming=reservations.filter(r=>new Date(r.scheduled_time)>now);
-    const past=reservations.filter(r=>new Date(r.scheduled_time)<=now);
+    const past=reservations.filter(r=>new Date(r.scheduled_time)<=now).sort((a,b)=>new Date(b.scheduled_time)-new Date(a.scheduled_time));
     body.innerHTML=`
       <div class="card"><h2>出退勤予約の登録</h2>
         <label>種別</label><select id="resType"><option value="clock_in">出勤予約</option><option value="clock_out">退勤予約</option></select>
@@ -471,13 +612,11 @@ async function mountUserTab(){
       </div>
       <div class="card"><h2>予約一覧</h2>
         ${upcoming.length?`<h3 style="margin-bottom:8px;">今後の予定</h3>`+upcoming.map(r=>`<div class="rec-row">
-          <div><div><span class="badge ${r.type==='clock_in'?'badge-approved':'badge-pending'}">${r.type==='clock_in'?'出勤':'退勤'}</span>　${fmtDateTime(r.scheduled_time)}</div>
-            ${r.reason?`<div class="hint">${escapeHtml(r.reason)}</div>`:''}
-          </div>
+          <div><div><span class="badge ${r.type==='clock_in'?'badge-approved':'badge-pending'}">${typeLabel(r.type)}</span> ${fmtDateTime(r.scheduled_time)}</div>${r.reason?`<div class="hint">${escapeHtml(r.reason)}</div>`:''}</div>
           <button class="btn btn-line btn-sm" data-delres="${r.id}">削除</button>
         </div>`).join(''):''}
         ${past.length?`<h3 style="margin:12px 0 8px;">過去の予約</h3>`+past.slice(0,5).map(r=>`<div class="rec-row" style="opacity:.6;">
-          <div><span class="badge ${r.type==='clock_in'?'badge-approved':'badge-pending'}">${r.type==='clock_in'?'出勤':'退勤'}</span>　${fmtDateTime(r.scheduled_time)}${r.reason?'　'+escapeHtml(r.reason):''}</div>
+          <div><span class="badge ${r.type==='clock_in'?'badge-approved':'badge-pending'}">${typeLabel(r.type)}</span> ${fmtDateTime(r.scheduled_time)}${r.reason?' '+escapeHtml(r.reason):''} ${r.processed?'<span class="badge badge-confirmed">打刻済</span>':''}</div>
         </div>`).join(''):''}
         ${!upcoming.length&&!past.length?'<div class="empty">予約はありません</div>':''}
       </div>`;
@@ -496,8 +635,21 @@ async function mountUserTab(){
     }));
   }
   else if(state.userTab==='leave'){
-    const requests=await getLeaveRequests(email);
+    const [requests,users,allApproved]=await Promise.all([getLeaveRequests(email),getAllUsers(),getApprovedLeaves()]);
+    const me=users.find(u=>u.email===email)||{};
+    const total=Number(me.paid_leave_total||10);
+    const thisYear=new Date().getFullYear();
+    const used=requests.filter(r=>r.status==='approved'&&r.type.startsWith('paid_leave')&&r.date&&r.date.startsWith(String(thisYear))).reduce((s,r)=>s+leaveDays(r.type),0);
+    const remain=total-used;
+    // 今月のチーム休暇
+    const ymNow=new Date().getFullYear()+'-'+p2(new Date().getMonth()+1);
+    const um=Object.fromEntries(users.map(u=>[u.email,u.name]));
+    const teamLeaves=allApproved.filter(r=>r.date&&r.date.startsWith(ymNow)).sort((a,b)=>a.date.localeCompare(b.date));
     body.innerHTML=`
+      <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
+        <div><h3 style="margin:0;">有給残日数（${thisYear}年）</h3><div class="hint">付与 ${total}日 / 取得 ${used}日</div></div>
+        <div style="font-family:var(--font-mono);font-size:28px;font-weight:700;color:${remain<=0?'var(--red)':'var(--green)'};">${remain}日</div>
+      </div>
       <div class="card"><h2>有給申請・欠勤連絡</h2>
         <label>種別</label>
         <select id="leaveType">
@@ -520,6 +672,9 @@ async function mountUserTab(){
           </div>
           <span class="badge badge-${r.status==='pending'?'pending':r.status==='approved'?'approved':'rejected'}">${r.status==='pending'?'審査中':r.status==='approved'?'承認':'却下'}</span>
         </div>`).join(''):'<div class="empty">申請・連絡はありません</div>'}
+      </div>
+      <div class="card"><h2>今月の休暇（全員）</h2>
+        ${teamLeaves.length?teamLeaves.map(r=>`<div class="rec-row"><div>${r.date.slice(5).replace('-','/')} ${escapeHtml(um[r.email]||r.email)}</div><span class="badge ${r.type.startsWith('paid_leave')?'badge-confirmed':'badge-rejected'}">${leaveLabel(r.type)}</span></div>`).join(''):'<div class="empty">今月の休暇はありません</div>'}
       </div>`;
     document.getElementById('leaveSubmit').addEventListener('click',async()=>{
       const type=document.getElementById('leaveType').value;
@@ -527,51 +682,72 @@ async function mountUserTab(){
       const reason=document.getElementById('leaveReason').value.trim();
       if(!date||!reason){showToast('日付と理由を入力してください');return;}
       await submitLeaveRequest(email,type,date,reason);
-      showToast(type==='paid_leave'?'有給申請を送信しました':'欠勤連絡を送信しました');mountUserTab();
+      showToast('送信しました');mountUserTab();
     });
   }
   else if(state.userTab==='kintai'){
+    await loadHolidays();
     const vm=state.viewMonth;
     const y=vm.getFullYear(),m=vm.getMonth();
-    const [records,leaves]=await Promise.all([getAttendance(email),getLeaveRequests(email)]);
+    const ym=y+'-'+p2(m+1);
+    const [records,leaves,settings,closings]=await Promise.all([getAttendance(email),getLeaveRequests(email),getSettings(),getClosings()]);
     const monthRecs=records.filter(r=>{const d=new Date(r.timestamp);return d.getFullYear()===y&&d.getMonth()===m;});
     const days=new Date(y,m+1,0).getDate();
-    let rows='',totalWork=0,paidDays=0,absenceDays=0;
+    const wsStd=settings.work_start||'',weStd=settings.work_end||'';
+    let rows='',totalWork=0,totalOver=0,totalNight=0,paidDays=0,absenceDays=0;
+    const todayStart=new Date();todayStart.setHours(0,0,0,0);
     for(let d=1;d<=days;d++){
       const ds=y+'-'+p2(m+1)+'-'+p2(d);
       const dayStr=ds.replace(/-/g,'/');
       const dayRecs=monthRecs.filter(r=>fmtDate(r.timestamp)===dayStr);
-      const inRec=dayRecs.sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).find(r=>r.type==='clock_in');
-      const outRec=dayRecs.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).find(r=>r.type==='clock_out');
+      const s=calcDayStats(dayRecs);
       const leave=leaves.find(r=>r.date===ds&&r.status==='approved');
-      const workMin=calcWorkMin(dayRecs);
-      if(workMin!=null)totalWork+=workMin;
-      if(leave)paidDays+=leave.type.startsWith('paid_leave')?leaveDays(leave.type):0;
-      if(leave)absenceDays+=leave.type.startsWith('absence')?leaveDays(leave.type):0;
+      if(s.workMin!=null){totalWork+=s.workMin;totalOver+=s.overMin;totalNight+=s.nightMin;}
+      if(leave&&leave.type.startsWith('paid_leave'))paidDays+=leaveDays(leave.type);
+      if(leave&&leave.type.startsWith('absence'))absenceDays+=leaveDays(leave.type);
       const wd=new Date(y,m,d).getDay();
       const wdStr=['日','月','火','水','木','金','土'][wd];
+      const holiday=holidayMap[ds];
       const weekend=wd===0||wd===6;
-      rows+=`<tr style="${weekend?'color:var(--ink-soft);':''}">
+      const dayDate=new Date(y,m,d);
+      const miss=dayDate<todayStart&&!leave&&((s.inRec&&!s.outRec)||(!s.inRec&&s.outRec));
+      // 遅刻早退
+      let lateEarly='';
+      if(wsStd&&s.inRec&&fmtTime(s.inRec.timestamp)>wsStd)lateEarly+='遅刻 ';
+      if(weStd&&s.outRec&&fmtTime(s.outRec.timestamp)<weStd)lateEarly+='早退 ';
+      const notes=[];
+      if(s.overMin>0)notes.push('残業'+fmtMin(s.overMin));
+      if(s.nightMin>0)notes.push('深夜'+fmtMin(s.nightMin));
+      if(lateEarly)notes.push(lateEarly.trim());
+      if(s.inRec&&s.inRec.site)notes.push('@'+s.inRec.site);
+      if(miss)notes.push('打刻漏れ');
+      if(holiday)notes.push(holiday);
+      rows+=`<tr class="${miss?'row-miss':holiday?'row-holiday':''}" style="${weekend&&!holiday&&!miss?'color:var(--ink-soft);':''}">
         <td>${d}（${wdStr}）</td>
-        <td>${inRec?fmtTime(inRec.timestamp):leave?'—':''}</td>
-        <td>${outRec?fmtTime(outRec.timestamp):leave?'—':''}</td>
-        <td>${workMin!=null?Math.floor(workMin/60)+'h'+p2(workMin%60)+'m':leave?`<span class="badge ${leave.type.startsWith('paid_leave')?'badge-confirmed':'badge-rejected'}">${leaveLabel(leave.type)}</span>`:''}</td>
+        <td>${s.inRec?fmtTime(s.inRec.timestamp):leave?'—':''}</td>
+        <td>${s.outRec?fmtTime(s.outRec.timestamp):leave?'—':''}</td>
+        <td>${s.brMin>0?fmtMin(s.brMin):''}</td>
+        <td>${s.workMin!=null?fmtMin(s.workMin):leave?`<span class="badge ${leave.type.startsWith('paid_leave')?'badge-confirmed':'badge-rejected'}">${leaveLabel(leave.type)}</span>`:''}</td>
+        <td style="font-size:10.5px;">${notes.join(' ')}</td>
       </tr>`;
     }
-    const th=Math.floor(totalWork/60),tm=totalWork%60;
+    const overWarn=totalOver>2700?`<div class="warn-box">⚠ 月間残業が45時間を超えています（36協定上限に注意）</div>`:'';
     body.innerHTML=`
       <div class="month-nav">
-        <button id="prevMonth">&#9664;</button>
-        <span>${y}年${m+1}月</span>
-        <button id="nextMonth">&#9654;</button>
+        <button class="nav" id="prevMonth">&#9664;</button>
+        <span>${y}年${m+1}月 ${isClosed(closings,ym)?'<span class="badge badge-lock">🔒締め済</span>':''}</span>
+        <button class="nav" id="nextMonth">&#9654;</button>
       </div>
+      ${overWarn}
       <div class="card" style="padding:12px;">
-        <div style="display:flex;gap:16px;margin-bottom:12px;font-size:13px;flex-wrap:wrap;">
-          <span>総勤務時間：<strong>${th}h${p2(tm)}m</strong></span>
+        <div style="display:flex;gap:14px;margin-bottom:12px;font-size:12.5px;flex-wrap:wrap;">
+          <span>実働：<strong>${fmtMin(totalWork)}</strong></span>
+          <span style="${totalOver>2700?'color:var(--red);':''}">残業：<strong>${fmtMin(totalOver)}</strong></span>
+          <span>深夜：<strong>${fmtMin(totalNight)}</strong></span>
           <span>有給：<strong>${paidDays}日</strong></span>
           <span>欠勤：<strong>${absenceDays}日</strong></span>
         </div>
-        <table><thead><tr><th>日付</th><th>出勤</th><th>退勤</th><th>勤務時間</th></tr></thead><tbody>${rows}</tbody></table>
+        <table><thead><tr><th>日</th><th>出勤</th><th>退勤</th><th>休憩</th><th>実働</th><th>備考</th></tr></thead><tbody>${rows}</tbody></table>
       </div>`;
     document.getElementById('prevMonth').addEventListener('click',()=>{state.viewMonth=new Date(y,m-1,1);mountUserTab();});
     document.getElementById('nextMonth').addEventListener('click',()=>{state.viewMonth=new Date(y,m+1,1);mountUserTab();});
@@ -579,10 +755,19 @@ async function mountUserTab(){
 }
 
 async function doPunch(type){
-  const btn=document.getElementById(type==='clock_in'?'punchIn':'punchOut');
+  const btn=document.getElementById({clock_in:'punchIn',clock_out:'punchOut',break_start:'breakStart',break_end:'breakEnd'}[type]);
   if(btn)btn.disabled=true;
-  const rec=await punch(state.currentUser.email,type);
-  if(navigator.onLine)showToast((type==='clock_in'?'出勤':'退勤')+'を記録しました　'+fmtTime(rec.timestamp));
+  const siteSel=document.getElementById('siteSel');
+  const site=siteSel?siteSel.value:null;
+  if(site)localStorage.setItem('dezura_last_site',site);
+  const rec=await punch(state.currentUser.email,type,site);
+  if(navigator.onLine){
+    showToastAction(typeLabel(type)+'を記録しました '+fmtTime(rec.timestamp),'取消',async()=>{
+      await sbFetch('attendance?id=eq.'+rec.id,'DELETE');
+      logAudit(state.currentUser.email,'undo_punch',rec.id,'');
+      showToast('取り消しました');mountUserTab();
+    },5000);
+  }
   mountUserTab();
 }
 
@@ -604,7 +789,7 @@ function openCorrectionModal(){
   document.getElementById('correctionModalBg')?.remove();
   const bg=document.createElement('div');bg.className='modal-bg';bg.id='correctionModalBg';
   bg.innerHTML=`<div class="modal"><h2>打刻の修正依頼</h2>
-    <div class="hint">現在の記録：${m.type==='clock_in'?'出勤':'退勤'} ${fmtDateTime(m.oldTime)}</div>
+    <div class="hint">現在の記録：${typeLabel(m.type)} ${fmtDateTime(m.oldTime)}</div>
     <label>正しい日時</label><input id="corTime" type="datetime-local" value="${toDatetimeLocal(m.oldTime)}">
     <label>修正理由</label><textarea id="corReason" rows="3" placeholder="例：打刻を忘れ、実際は8:55出勤でした"></textarea>
     <div style="display:flex;gap:10px;margin-top:16px;">
@@ -629,45 +814,106 @@ function openTermsModal(){
   document.getElementById('termsClose').addEventListener('click',()=>bg.remove());
 }
 
-/* ===== 管理者タブ ===== */
+/* ===== 管理者 ===== */
 function startPoll(){stopPoll();pollTimer=setInterval(()=>{if(state.view==='admin')mountAdminTab();},15000);}
 function stopPoll(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
 
 async function mountAdminTab(){
   const body=document.getElementById('adminTabBody');if(!body)return;
-  if(state.adminTab==='users'){
+
+  if(state.adminTab==='presence'){
+    const [users,recs]=await Promise.all([getAllUsers(),sbFetch('attendance?deleted=eq.false&order=timestamp.desc&limit=2000')]);
+    const today=new Date().toDateString();
+    body.innerHTML=`<div class="card"><h2>本日の在席状況</h2>
+      ${users.filter(u=>!u.disabled).map(u=>{
+        const todayRecs=recs.filter(r=>r.email===u.email&&new Date(r.timestamp).toDateString()===today).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+        const last=todayRecs[0];
+        let st='未出勤',cls='badge-lock';
+        if(last){
+          if(last.type==='clock_in'||last.type==='break_end'){st='出勤中';cls='badge-approved';}
+          else if(last.type==='break_start'){st='休憩中';cls='badge-pending';}
+          else{st='退勤済';cls='badge-confirmed';}
+        }
+        return`<div class="presence-item">
+          <div><strong>${escapeHtml(u.name)}</strong>${last&&last.site?' <span class="hint">@'+escapeHtml(last.site)+'</span>':''}</div>
+          <div style="display:flex;gap:8px;align-items:center;">${last?'<span class="rec-time">'+fmtTime(last.timestamp)+'</span>':''}<span class="badge ${cls}">${st}</span></div>
+        </div>`;}).join('')||'<div class="empty">ユーザーがいません</div>'}
+    </div>`;
+  }
+  else if(state.adminTab==='users'){
     const users=await getAllUsers();
     let expanded='';
     if(state.adminExpandedUser){
       const u=users.find(x=>x.email===state.adminExpandedUser);
       if(u){
-        const records=await sbFetch('attendance?email=eq.'+encodeURIComponent(u.email)+'&order=timestamp.desc');
+        const [records,settings]=await Promise.all([
+          sbFetch('attendance?email=eq.'+encodeURIComponent(u.email)+'&deleted=eq.false&order=timestamp.desc&limit=200'),
+          getSettings()
+        ]);
+        const oLat=parseFloat(settings.office_lat),oLng=parseFloat(settings.office_lng),oRad=parseFloat(settings.office_radius);
+        const geoOn=!isNaN(oLat)&&!isNaN(oLng)&&!isNaN(oRad);
         expanded=`<div class="card"><h3>${escapeHtml(u.name)}（${escapeHtml(u.email)}）の打刻詳細</h3>
-          <table><thead><tr><th>種別</th><th>日時</th><th>GPS座標</th><th>精度</th><th>地図</th></tr></thead><tbody>
-          ${records.length?records.map(r=>`<tr>
-            <td>${r.type==='clock_in'?'出勤':'退勤'}${r.corrected?' ✎':''}</td>
+          <table><thead><tr><th>種別</th><th>日時</th><th>GPS</th><th>精度</th><th>現場</th><th>地図</th></tr></thead><tbody>
+          ${records.length?records.map(r=>{
+            let geoWarn='';
+            if(geoOn&&r.gps_lat!=null){
+              const dist=haversine(oLat,oLng,r.gps_lat,r.gps_lng);
+              if(dist>oRad)geoWarn=' <span class="badge badge-rejected">圏外'+Math.round(dist/1000*10)/10+'km</span>';
+            }
+            return`<tr>
+            <td>${typeLabel(r.type)}${r.corrected?' ✎':''}${r.from_reservation?' 予':''}</td>
             <td>${fmtDateTime(r.timestamp)}</td>
-            <td>${r.gps_lat!=null?r.gps_lat.toFixed(6)+', '+r.gps_lng.toFixed(6):'取得不可'}</td>
+            <td>${r.gps_lat!=null?r.gps_lat.toFixed(5)+','+r.gps_lng.toFixed(5)+geoWarn:'取得不可'}</td>
             <td>${r.gps_accuracy!=null?'±'+r.gps_accuracy+'m':'-'}</td>
+            <td>${escapeHtml(r.site||'')}</td>
             <td>${r.gps_lat!=null?`<a class="gps-link" target="_blank" href="https://maps.google.com/?q=${r.gps_lat},${r.gps_lng}">地図</a>`:'-'}</td>
-          </tr>`).join(''):'<tr><td colspan="5" class="empty">記録がありません</td></tr>'}
+          </tr>`;}).join(''):'<tr><td colspan="6" class="empty">記録がありません</td></tr>'}
           </tbody></table></div>`;
       }
     }
     body.innerHTML=`<div class="card"><h2>登録ユーザー（${users.length}名）</h2>
-      ${users.length?users.map(u=>`<div class="user-list-item" data-adminuser="${u.email}">
-        <div><strong>${escapeHtml(u.name)}</strong><div class="hint">${escapeHtml(u.email)}</div></div>
-        <span class="hint">詳細を見る ›</span>
+      ${users.length?users.map(u=>`<div class="user-list-item">
+        <div style="cursor:pointer;" data-adminuser="${u.email}"><strong>${escapeHtml(u.name)}</strong>${u.disabled?' <span class="badge badge-rejected">無効</span>':''}<div class="hint">${escapeHtml(u.email)}｜有給付与 ${u.paid_leave_total||10}日</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn btn-line btn-sm" data-adminuser="${u.email}">詳細</button>
+          <button class="btn btn-line btn-sm" data-pwreset="${u.email}">PW再設定</button>
+          <button class="btn btn-line btn-sm" data-pltotal="${u.email}">有給付与</button>
+          <button class="btn ${u.disabled?'btn-green':'btn-red'} btn-sm" data-toggledis="${u.email}|${u.disabled?'0':'1'}">${u.disabled?'有効化':'無効化'}</button>
+        </div>
       </div>`).join(''):'<div class="empty">登録ユーザーはいません</div>'}
     </div>${expanded}`;
     document.querySelectorAll('[data-adminuser]').forEach(el=>el.addEventListener('click',()=>{state.adminExpandedUser=el.getAttribute('data-adminuser');mountAdminTab();}));
+    document.querySelectorAll('[data-pwreset]').forEach(btn=>btn.addEventListener('click',async e=>{
+      e.stopPropagation();
+      const em=btn.getAttribute('data-pwreset');
+      const np=prompt(em+' の新しいパスワード');
+      if(!np)return;
+      await sbUpdate('users','email=eq.'+encodeURIComponent(em),{pass:np});
+      logAudit('admin','pass_reset',em,'');
+      showToast('パスワードを再設定しました');
+    }));
+    document.querySelectorAll('[data-pltotal]').forEach(btn=>btn.addEventListener('click',async e=>{
+      e.stopPropagation();
+      const em=btn.getAttribute('data-pltotal');
+      const nv=prompt(em+' の年間有給付与日数');
+      if(nv===null||isNaN(Number(nv)))return;
+      await sbUpdate('users','email=eq.'+encodeURIComponent(em),{paid_leave_total:Number(nv)});
+      showToast('更新しました');mountAdminTab();
+    }));
+    document.querySelectorAll('[data-toggledis]').forEach(btn=>btn.addEventListener('click',async e=>{
+      e.stopPropagation();
+      const [em,to]=btn.getAttribute('data-toggledis').split('|');
+      await sbUpdate('users','email=eq.'+encodeURIComponent(em),{disabled:to==='1'});
+      logAudit('admin',to==='1'?'user_disable':'user_enable',em,'');
+      showToast(to==='1'?'無効化しました':'有効化しました');mountAdminTab();
+    }));
   }
   else if(state.adminTab==='corrections'){
     const [users,corrections]=await Promise.all([getAllUsers(),getAllCorrections()]);
     const um=Object.fromEntries(users.map(u=>[u.email,u.name]));
     body.innerHTML=`<div class="card"><h2>修正依頼一覧</h2>
       ${corrections.length?corrections.map(c=>`<div class="rec-row" style="align-items:flex-start;">
-        <div><div><strong>${escapeHtml(um[c.email]||c.email)}</strong>　${c.type==='clock_in'?'出勤':'退勤'}</div>
+        <div><div><strong>${escapeHtml(um[c.email]||c.email)}</strong> ${typeLabel(c.type)}</div>
           <div class="hint">${fmtDateTime(c.old_time)} → ${fmtDateTime(c.requested_time)}</div>
           <div class="hint">理由：${escapeHtml(c.reason)}</div>
           ${c.status==='rejected'&&c.admin_note?`<div class="hint">却下：${escapeHtml(c.admin_note)}</div>`:''}
@@ -694,7 +940,7 @@ async function mountAdminTab(){
     const um=Object.fromEntries(users.map(u=>[u.email,u.name]));
     body.innerHTML=`<div class="card"><h2>有給申請・欠勤連絡 一覧</h2>
       ${requests.length?requests.map(r=>`<div class="rec-row" style="align-items:flex-start;">
-        <div><div><strong>${escapeHtml(um[r.email]||r.email)}</strong>　<span class="badge ${r.type==='paid_leave'?'badge-confirmed':'badge-pending'}">${r.type==='paid_leave'?'有給':'欠勤'}</span>　${r.date}</div>
+        <div><div><strong>${escapeHtml(um[r.email]||r.email)}</strong> <span class="badge ${r.type.startsWith('paid_leave')?'badge-confirmed':'badge-pending'}">${leaveLabel(r.type)}</span> ${r.date}</div>
           <div class="hint">理由：${escapeHtml(r.reason)}</div>
           ${r.status==='rejected'&&r.admin_note?`<div class="hint">却下：${escapeHtml(r.admin_note)}</div>`:''}
         </div>
@@ -718,89 +964,110 @@ async function mountAdminTab(){
     if(!state.viewMonth)state.viewMonth=new Date();
     mountAdminKintai();
   }
-}
-
-/* ===== 予約自動打刻 ===== */
-async function autoProcessReservations(email){
-  const reservations=await getReservations(email);
-  const now=new Date();
-  const pending=reservations.filter(r=>!r.processed&&new Date(r.scheduled_time)<=now);
-  for(const r of pending){
-    try{
-      const gps=await getGPS();
-      const row={id:genId(),email,type:r.type,timestamp:r.scheduled_time,gps_lat:gps?gps.lat:null,gps_lng:gps?gps.lng:null,gps_accuracy:gps?gps.accuracy:null,corrected:false,from_reservation:true};
-      await sbInsert('attendance',row);
-      await sbUpdate('reservations','id=eq.'+r.id,{processed:true});
-      showToast((r.type==='clock_in'?'出勤':'退勤')+'予約を自動打刻しました　'+fmtTime(r.scheduled_time));
-    }catch(e){console.error(e);}
+  else if(state.adminTab==='settings'){
+    mountAdminSettings();
   }
 }
 
-/* ===== 管理者カレンダー・Excel ===== */
+/* ===== 管理者：出勤簿 ===== */
 async function mountAdminKintai(){
   const body=document.getElementById('adminTabBody');if(!body)return;
-  const vm=state.viewMonth||new Date();
+  await loadHolidays();
+  const vm=state.viewMonth;
   const y=vm.getFullYear(),m=vm.getMonth();
-  const [users,allRecords,allLeaves]=await Promise.all([
+  const ym=y+'-'+p2(m+1);
+  const [users,allRecords,allLeaves,settings,closings]=await Promise.all([
     getAllUsers(),
-    sbFetch('attendance?order=timestamp.desc&limit=5000'),
-    sbFetch('leave_requests?status=eq.approved&order=date.asc')
+    sbFetch('attendance?deleted=eq.false&order=timestamp.desc&limit=5000'),
+    getApprovedLeaves(),
+    getSettings(),
+    getClosings()
   ]);
   const days=new Date(y,m+1,0).getDate();
+  const closed=isClosed(closings,ym);
+  const wsStd=settings.work_start||'',weStd=settings.work_end||'';
+  const todayStart=new Date();todayStart.setHours(0,0,0,0);
 
   let html=`<div class="month-nav">
-    <button id="prevMonthA">&#9664;</button>
-    <span>${y}年${m+1}月</span>
-    <button id="nextMonthA">&#9654;</button>
+    <button class="nav" id="prevMonthA">&#9664;</button>
+    <span>${y}年${m+1}月 ${closed?'<span class="badge badge-lock">🔒締め済</span>':''}</span>
+    <button class="nav" id="nextMonthA">&#9654;</button>
+    <button class="btn ${closed?'btn-line':'btn-amber'} btn-sm" id="toggleClose">${closed?'締め解除':'この月を締める'}</button>
     <button class="btn btn-green btn-sm" id="exportExcel" style="margin-left:auto;">Excel出力</button>
   </div>`;
 
   for(const u of users){
     const recs=allRecords.filter(r=>r.email===u.email&&(()=>{const d=new Date(r.timestamp);return d.getFullYear()===y&&d.getMonth()===m;})());
     const leaves=allLeaves.filter(r=>r.email===u.email);
-    let rows='',totalWork=0;
+    let rows='',totalWork=0,totalOver=0,totalNight=0;
     for(let d=1;d<=days;d++){
       const ds=y+'-'+p2(m+1)+'-'+p2(d);
       const dayStr=ds.replace(/-/g,'/');
       const dayRecs=recs.filter(r=>fmtDate(r.timestamp)===dayStr);
-      const inRec=dayRecs.sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).find(r=>r.type==='clock_in');
-      const outRec=dayRecs.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).find(r=>r.type==='clock_out');
+      const s=calcDayStats(dayRecs);
       const leave=leaves.find(r=>r.date===ds);
-      const workMin=calcWorkMin(dayRecs);
-      if(workMin!=null)totalWork+=workMin;
+      if(s.workMin!=null){totalWork+=s.workMin;totalOver+=s.overMin;totalNight+=s.nightMin;}
       const wd=new Date(y,m,d).getDay();
       const wdStr=['日','月','火','水','木','金','土'][wd];
+      const holiday=holidayMap[ds];
       const weekend=wd===0||wd===6;
-      rows+=`<tr style="${weekend?'color:var(--ink-soft);':''}">
+      const dayDate=new Date(y,m,d);
+      const miss=dayDate<todayStart&&!leave&&((s.inRec&&!s.outRec)||(!s.inRec&&s.outRec));
+      let lateEarly='';
+      if(wsStd&&s.inRec&&fmtTime(s.inRec.timestamp)>wsStd)lateEarly+='遅刻 ';
+      if(weStd&&s.outRec&&fmtTime(s.outRec.timestamp)<weStd)lateEarly+='早退 ';
+      const notes=[];
+      if(s.overMin>0)notes.push('残'+fmtMin(s.overMin));
+      if(s.nightMin>0)notes.push('深'+fmtMin(s.nightMin));
+      if(lateEarly)notes.push(lateEarly.trim());
+      if(s.inRec&&s.inRec.site)notes.push('@'+s.inRec.site);
+      if(s.inRec&&s.inRec.from_reservation)notes.push('予約');
+      if(miss)notes.push('打刻漏れ');
+      if(holiday)notes.push(holiday);
+      rows+=`<tr class="${miss?'row-miss':holiday?'row-holiday':''}" style="${weekend&&!holiday&&!miss?'color:var(--ink-soft);':''}">
         <td>${d}(${wdStr})</td>
-        <td>${inRec?fmtTime(inRec.timestamp)+(inRec.from_reservation?'<span class="badge badge-confirmed" style="margin-left:4px;font-size:10px;">予約</span>':''):leave?'—':''}</td>
-        <td>${outRec?fmtTime(outRec.timestamp)+(outRec.from_reservation?'<span class="badge badge-confirmed" style="margin-left:4px;font-size:10px;">予約</span>':''):leave?'—':''}</td>
-        <td>${workMin!=null?Math.floor(workMin/60)+'h'+p2(workMin%60)+'m':leave?`<span class="badge ${leave.type.startsWith('paid_leave')?'badge-confirmed':'badge-rejected'}">${leaveLabel(leave.type)}</span>`:''}</td>
-        <td>${dayRecs.map(r=>`<button class="btn btn-sm" style="background:var(--red-soft);color:var(--red);margin:1px;" data-admdelatt="${r.id}">${r.type==='clock_in'?'出':'退'}${fmtTime(r.timestamp)}</button>`).join('')}</td>
+        <td>${s.inRec?fmtTime(s.inRec.timestamp):leave?'—':''}</td>
+        <td>${s.outRec?fmtTime(s.outRec.timestamp):leave?'—':''}</td>
+        <td>${s.brMin>0?fmtMin(s.brMin):''}</td>
+        <td>${s.workMin!=null?fmtMin(s.workMin):leave?`<span class="badge ${leave.type.startsWith('paid_leave')?'badge-confirmed':'badge-rejected'}">${leaveLabel(leave.type)}</span>`:''}</td>
+        <td style="font-size:10px;">${notes.join(' ')}</td>
+        <td>${closed?'':dayRecs.map(r=>`<button class="btn btn-red btn-sm" style="margin:1px;padding:3px 6px;font-size:10px;" data-admdelatt="${r.id}">${typeLabel(r.type).slice(0,1)}${fmtTime(r.timestamp)}</button>`).join('')}</td>
       </tr>`;
     }
-    const th=Math.floor(totalWork/60),tm2=totalWork%60;
     html+=`<div class="card" style="padding:12px;margin-bottom:12px;">
-      <h3 style="margin-bottom:6px;">${escapeHtml(u.name)}<span class="hint" style="font-weight:400;margin-left:8px;">${escapeHtml(u.email)}</span><span style="float:right;font-size:12px;color:var(--ink-soft);">総勤務 ${th}h${p2(tm2)}m</span></h3>
-      <table><thead><tr><th>日</th><th>出勤</th><th>退勤</th><th>時間</th><th>削除</th></tr></thead><tbody>${rows}</tbody></table>
+      <h3 style="margin-bottom:6px;">${escapeHtml(u.name)}<span class="hint" style="font-weight:400;margin-left:8px;">${escapeHtml(u.email)}</span>
+        <span style="float:right;font-size:11.5px;color:var(--ink-soft);">実働${fmtMin(totalWork)}｜<span style="${totalOver>2700?'color:var(--red);font-weight:700;':''}">残業${fmtMin(totalOver)}</span>｜深夜${fmtMin(totalNight)}</span></h3>
+      <table><thead><tr><th>日</th><th>出</th><th>退</th><th>休憩</th><th>実働</th><th>備考</th><th>削除</th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
   }
   body.innerHTML=html;
   document.getElementById('prevMonthA').addEventListener('click',()=>{state.viewMonth=new Date(y,m-1,1);mountAdminKintai();});
   document.getElementById('nextMonthA').addEventListener('click',()=>{state.viewMonth=new Date(y,m+1,1);mountAdminKintai();});
-  document.getElementById('exportExcel').addEventListener('click',()=>exportExcel(users,allRecords,allLeaves,y,m));
+  document.getElementById('toggleClose').addEventListener('click',async()=>{
+    if(closed){
+      if(!confirm(ym+' の締めを解除しますか？'))return;
+      await sbFetch('closings?month=eq.'+ym,'DELETE');
+      logAudit('admin','open_month',ym,'');
+    }else{
+      if(!confirm(ym+' を締めますか？（締め後はユーザーの修正・削除不可）'))return;
+      await sbUpsert('closings',{month:ym,closed:true,closed_at:new Date().toISOString()});
+      logAudit('admin','close_month',ym,'');
+    }
+    mountAdminKintai();
+  });
+  document.getElementById('exportExcel').addEventListener('click',()=>exportXlsx(users,allRecords,allLeaves,settings,y,m));
   document.querySelectorAll('[data-admdelatt]').forEach(btn=>btn.addEventListener('click',async()=>{
     if(!confirm('この打刻を削除しますか？'))return;
-    await deleteAttendance(btn.getAttribute('data-admdelatt'));
+    await softDeleteAttendance(btn.getAttribute('data-admdelatt'),'admin');
     showToast('削除しました');mountAdminKintai();
   }));
 }
 
-function exportExcel(users,allRecords,allLeaves,y,m){
+/* ===== Excel(xlsx)出力 ===== */
+function exportXlsx(users,allRecords,allLeaves,settings,y,m){
   const days=new Date(y,m+1,0).getDate();
-  const BOM='\uFEFF';
-  let csv=BOM+'氏名,日付,曜日,出勤,退勤,勤務時間,備考\n';
   const wdStr=['日','月','火','水','木','金','土'];
+  const rows=[['氏名','日付','曜日','出勤','退勤','休憩','実働','残業','深夜','現場','備考']];
   for(const u of users){
     const recs=allRecords.filter(r=>r.email===u.email&&(()=>{const d=new Date(r.timestamp);return d.getFullYear()===y&&d.getMonth()===m;})());
     const leaves=allLeaves.filter(r=>r.email===u.email);
@@ -808,36 +1075,132 @@ function exportExcel(users,allRecords,allLeaves,y,m){
       const ds=y+'-'+p2(m+1)+'-'+p2(d);
       const dayStr=ds.replace(/-/g,'/');
       const dayRecs=recs.filter(r=>fmtDate(r.timestamp)===dayStr);
-      const inRec=dayRecs.sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).find(r=>r.type==='clock_in');
-      const outRec=dayRecs.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).find(r=>r.type==='clock_out');
+      const s=calcDayStats(dayRecs);
       const leave=leaves.find(r=>r.date===ds);
-      const wm=calcWorkMin(dayRecs);
-      const workStr=wm!=null?Math.floor(wm/60)+'h'+p2(wm%60)+'m':'';
-      let note='';
-      if(inRec?.from_reservation||outRec?.from_reservation)note='予約打刻';
-      if(leave)note=leaveLabel(leave.type);
-      const wd=new Date(y,m,d).getDay();
-      csv+=`"${u.name}","${dayStr}","${wdStr[wd]}","${inRec?fmtTime(inRec.timestamp):''}","${outRec?fmtTime(outRec.timestamp):''}","${workStr}","${note}"\n`;
+      const notes=[];
+      if(s.inRec&&s.inRec.from_reservation)notes.push('予約打刻');
+      if(leave)notes.push(leaveLabel(leave.type));
+      if(holidayMap[ds])notes.push(holidayMap[ds]);
+      rows.push([u.name,dayStr,wdStr[new Date(y,m,d).getDay()],
+        s.inRec?fmtTime(s.inRec.timestamp):'',
+        s.outRec?fmtTime(s.outRec.timestamp):'',
+        s.brMin>0?fmtMin(s.brMin):'',
+        s.workMin!=null?fmtMin(s.workMin):'',
+        s.overMin>0?fmtMin(s.overMin):'',
+        s.nightMin>0?fmtMin(s.nightMin):'',
+        (s.inRec&&s.inRec.site)||'',
+        notes.join(' ')]);
     }
   }
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=`出勤簿_${y}年${m+1}月.csv`;
-  a.click();
+  if(typeof XLSX!=='undefined'){
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:12},{wch:11},{wch:4},{wch:6},{wch:6},{wch:7},{wch:8},{wch:8},{wch:8},{wch:10},{wch:16}];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,`${y}年${m+1}月`);
+    XLSX.writeFile(wb,`出勤簿_${y}年${m+1}月.xlsx`);
+  }else{
+    const csv='\uFEFF'+rows.map(r=>r.map(c=>'"'+String(c)+'"').join(',')).join('\n');
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+    a.download=`出勤簿_${y}年${m+1}月.csv`;a.click();
+  }
+}
+
+/* ===== 管理者：設定 ===== */
+async function mountAdminSettings(){
+  const body=document.getElementById('adminTabBody');if(!body)return;
+  const [sites,settings,closings,logs]=await Promise.all([
+    getAllSites(),getSettings(),getClosings(),
+    sbFetch('audit_logs?order=created_at.desc&limit=50').catch(()=>[])
+  ]);
+  const actionLabel={delete_att:'打刻削除',approve_corr:'修正承認',reject_corr:'修正却下',approve_leave:'休暇承認',reject_leave:'休暇却下',close_month:'月締め',open_month:'締め解除',pass_reset:'PW再設定',user_disable:'ユーザー無効化',user_enable:'ユーザー有効化',undo_punch:'打刻取消'};
+  body.innerHTML=`
+    <div class="card"><h2>現場管理</h2>
+      ${sites.map(s=>`<div class="rec-row"><div>${escapeHtml(s.name)}${s.active?'':' <span class="badge badge-rejected">無効</span>'}</div>
+        <button class="btn ${s.active?'btn-red':'btn-green'} btn-sm" data-togglesite="${s.id}|${s.active?'0':'1'}">${s.active?'無効化':'有効化'}</button></div>`).join('')||'<div class="empty">現場未登録</div>'}
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <input id="newSiteName" placeholder="新しい現場名">
+        <button class="btn btn-navy" id="addSite" style="white-space:nowrap;">追加</button>
+      </div>
+    </div>
+    <div class="card"><h2>標準勤務時間（遅刻・早退判定）</h2>
+      <div style="display:flex;gap:12px;">
+        <div style="flex:1;"><label>始業</label><input id="setWorkStart" type="time" value="${settings.work_start||''}"></div>
+        <div style="flex:1;"><label>終業</label><input id="setWorkEnd" type="time" value="${settings.work_end||''}"></div>
+      </div>
+      <button class="btn btn-navy btn-sm" id="saveHours" style="margin-top:12px;">保存</button>
+    </div>
+    <div class="card"><h2>ジオフェンス（打刻位置チェック）</h2>
+      <div class="hint">設定すると、管理者の打刻詳細で圏外打刻に⚠が付きます（打刻自体はブロックしません）</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:100px;"><label>緯度</label><input id="setLat" value="${settings.office_lat||''}"></div>
+        <div style="flex:1;min-width:100px;"><label>経度</label><input id="setLng" value="${settings.office_lng||''}"></div>
+        <div style="flex:1;min-width:80px;"><label>半径(m)</label><input id="setRad" value="${settings.office_radius||''}"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn btn-line btn-sm" id="getHereBtn">現在地を取得</button>
+        <button class="btn btn-navy btn-sm" id="saveGeo">保存</button>
+      </div>
+    </div>
+    <div class="card"><h2>締め済みの月</h2>
+      ${closings.length?closings.map(c=>`<span class="badge badge-lock" style="margin:2px;">${c.month}</span>`).join(''):'<div class="empty">締め済みの月はありません（出勤簿タブから締められます）</div>'}
+    </div>
+    <div class="card"><h2>操作ログ（直近50件）</h2>
+      ${logs.length?logs.map(l=>`<div class="rec-row" style="font-size:12px;">
+        <div>${escapeHtml(actionLabel[l.action]||l.action)} <span class="hint">${escapeHtml(l.actor)}${l.detail?' / '+escapeHtml(l.detail):''}</span></div>
+        <span class="hint">${fmtDateTime(l.created_at)}</span></div>`).join(''):'<div class="empty">ログはありません</div>'}
+    </div>`;
+  document.getElementById('addSite').addEventListener('click',async()=>{
+    const name=document.getElementById('newSiteName').value.trim();
+    if(!name)return;
+    await sbInsert('sites',{id:genId(),name,active:true,created_at:new Date().toISOString()});
+    showToast('追加しました');mountAdminSettings();
+  });
+  document.querySelectorAll('[data-togglesite]').forEach(btn=>btn.addEventListener('click',async()=>{
+    const [id,to]=btn.getAttribute('data-togglesite').split('|');
+    await sbUpdate('sites','id=eq.'+id,{active:to==='1'});
+    mountAdminSettings();
+  }));
+  document.getElementById('saveHours').addEventListener('click',async()=>{
+    await saveSetting('work_start',document.getElementById('setWorkStart').value);
+    await saveSetting('work_end',document.getElementById('setWorkEnd').value);
+    showToast('保存しました');
+  });
+  document.getElementById('getHereBtn').addEventListener('click',async()=>{
+    const gps=await getGPS();
+    if(!gps){showToast('位置情報を取得できませんでした');return;}
+    document.getElementById('setLat').value=gps.lat.toFixed(6);
+    document.getElementById('setLng').value=gps.lng.toFixed(6);
+    if(!document.getElementById('setRad').value)document.getElementById('setRad').value='500';
+  });
+  document.getElementById('saveGeo').addEventListener('click',async()=>{
+    await saveSetting('office_lat',document.getElementById('setLat').value);
+    await saveSetting('office_lng',document.getElementById('setLng').value);
+    await saveSetting('office_radius',document.getElementById('setRad').value);
+    showToast('保存しました');
+  });
 }
 
 /* ===== セッション ===== */
-function saveSession(user){localStorage.setItem('dezura_session',JSON.stringify(user));}
+function saveSession(user){localStorage.setItem('dezura_session',JSON.stringify({u:user,ts:Date.now()}));}
 function clearSession(){localStorage.removeItem('dezura_session');}
-function loadSession(){try{const v=localStorage.getItem('dezura_session');return v?JSON.parse(v):null;}catch(e){return null;}}
+function loadSession(){
+  try{
+    const v=JSON.parse(localStorage.getItem('dezura_session')||'null');
+    if(!v)return null;
+    if(v.u&&v.ts){
+      if(Date.now()-v.ts>30*86400000){clearSession();return null;}
+      return v.u;
+    }
+    return v.email?v:null;
+  }catch(e){return null;}
+}
 
 const saved=loadSession();
 if(saved){state.view='user';state.currentUser=saved;}
 render();
-if(saved)mountUserTab();
+if(saved){mountUserTab();if(navigator.onLine)autoProcessReservations(saved.email);}
 if(navigator.onLine)syncQueue();
-if(saved&&navigator.onLine)autoProcessReservations(saved.email);
 </script>
 </body>
 </html>
