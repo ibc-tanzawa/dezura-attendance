@@ -247,13 +247,27 @@ async function loadHolidays(){
   }catch(e){}
 }
 
-/* ===== 勤務時間計算 ===== */
-function breakMinutes(dayRecs){
-  const sorted=[...dayRecs].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
-  let total=0,start=null;
-  for(const r of sorted){
-    if(r.type==='break_start')start=new Date(r.timestamp);
-    else if(r.type==='break_end'&&start){total+=(new Date(r.timestamp)-start)/60000;start=null;}
+/* ===== 休憩時間計算（設定から自動計算） ===== */
+function parseBreakSettings(settings){
+  // デフォルト: 12:00-13:00, 10:00-10:30, 15:00-15:30
+  try{
+    const s=settings.break_times;
+    if(s)return JSON.parse(s);
+  }catch(e){}
+  return [{start:'10:00',end:'10:30'},{start:'12:00',end:'13:00'},{start:'15:00',end:'15:30'}];
+}
+function calcFixedBreakMin(inRec,outRec,breakTimes){
+  if(!inRec||!outRec)return 0;
+  const inT=new Date(inRec.timestamp);
+  const outT=new Date(outRec.timestamp);
+  const date=inT.toISOString().slice(0,10);
+  let total=0;
+  for(const b of breakTimes){
+    const bs=new Date(date+'T'+b.start+':00');
+    const be=new Date(date+'T'+b.end+':00');
+    const os=Math.max(inT,bs);
+    const oe=Math.min(outT,be);
+    if(oe>os)total+=(oe-os)/60000;
   }
   return Math.round(total);
 }
@@ -267,12 +281,12 @@ function nightMinutes(s,e){
   }
   return Math.round(total);
 }
-function calcDayStats(dayRecs){
+function calcDayStats(dayRecs,breakTimes){
   const ins=dayRecs.filter(r=>r.type==='clock_in').sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
   const outs=dayRecs.filter(r=>r.type==='clock_out').sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
   const inRec=ins[0]||null,outRec=outs[outs.length-1]||null;
   let workMin=null,overMin=0,nightMin=0;
-  const brMin=breakMinutes(dayRecs);
+  const brMin=calcFixedBreakMin(inRec,outRec,breakTimes||[]);
   if(inRec&&outRec){
     const gross=Math.round((new Date(outRec.timestamp)-new Date(inRec.timestamp))/60000);
     workMin=Math.max(0,gross-brMin);
@@ -510,8 +524,8 @@ async function mountUserTab(){
     const [records,reservations,sites]=await Promise.all([getAttendance(email),getReservations(email),getSites()]);
     const last=records[0];
     const st=last?last.type:null;
-    const statusText=st==='clock_in'||st==='break_end'?'現在：出勤中':st==='break_start'?'現在：休憩中':'現在：退勤中 / 未出勤';
-    const statusCls=st==='clock_in'||st==='break_end'?'status-in':st==='break_start'?'status-break':'status-out';
+    const statusText=st==='clock_in'?'現在：出勤中':'現在：退勤中 / 未出勤';
+    const statusCls=st==='clock_in'?'status-in':'status-out';
     const today=new Date().toDateString();
     const todays=records.filter(r=>new Date(r.timestamp).toDateString()===today).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
     const queue=queueGet().filter(q=>q.row.email===email);
@@ -519,7 +533,7 @@ async function mountUserTab(){
     // 退勤忘れ検知
     let forgotWarn='';
     const lastIn=records.find(r=>r.type==='clock_in');
-    if((st==='clock_in'||st==='break_start'||st==='break_end')&&lastIn&&(Date.now()-new Date(lastIn.timestamp))>12*3600000){
+    if(st==='clock_in'&&lastIn&&(Date.now()-new Date(lastIn.timestamp))>12*3600000){
       forgotWarn=`<div class="warn-box">⚠ 出勤から12時間以上経過しています。退勤打刻を忘れていませんか？</div>`;
     }
     const reserveBlock=upcoming.length?`<div class="reserve-card"><div class="rc-label">📅 出退勤予約</div>
@@ -539,18 +553,12 @@ async function mountUserTab(){
         <button class="punch-btn punch-in" id="punchIn">出勤<span class="sub">CLOCK IN</span></button>
         <button class="punch-btn punch-out" id="punchOut">退勤<span class="sub">CLOCK OUT</span></button>
       </div>
-      <div class="break-grid">
-        <button class="break-btn" id="breakStart">☕ 休憩開始</button>
-        <button class="break-btn" id="breakEnd">▶ 休憩終了</button>
-      </div>
       <div class="card"><h3>本日の打刻</h3>
         ${todays.length?todays.map(r=>`<div class="rec-row"><div class="rec-left"><span class="dot ${dotClass(r.type)}"></span>${typeLabel(r.type)}${r.site?' <span class="hint">@'+escapeHtml(r.site)+'</span>':''}</div><span class="rec-time">${fmtTime(r.timestamp)}</span></div>`).join(''):'<div class="empty">本日の打刻はまだありません</div>'}
         ${queue.length?`<div style="margin-top:8px;"><span class="badge badge-offline">オフライン保存 ${queue.length}件</span></div>`:''}
       </div>`;
     document.getElementById('punchIn').addEventListener('click',()=>doPunch('clock_in'));
     document.getElementById('punchOut').addEventListener('click',()=>doPunch('clock_out'));
-    document.getElementById('breakStart').addEventListener('click',()=>doPunch('break_start'));
-    document.getElementById('breakEnd').addEventListener('click',()=>doPunch('break_end'));
     tickClock();
   }
   else if(state.userTab==='history'){
@@ -626,6 +634,7 @@ async function mountUserTab(){
       const reason=document.getElementById('resReason').value.trim();
       if(!time){showToast('予定日時を入力してください');return;}
       await submitReservation(email,type,new Date(time).toISOString(),reason);
+      await autoProcessReservations(email);
       showToast('予約を登録しました');mountUserTab();
     });
     document.querySelectorAll('[data-delres]').forEach(btn=>btn.addEventListener('click',async()=>{
@@ -691,6 +700,7 @@ async function mountUserTab(){
     const y=vm.getFullYear(),m=vm.getMonth();
     const ym=y+'-'+p2(m+1);
     const [records,leaves,settings,closings]=await Promise.all([getAttendance(email),getLeaveRequests(email),getSettings(),getClosings()]);
+    const breakTimes=parseBreakSettings(settings);
     const monthRecs=records.filter(r=>{const d=new Date(r.timestamp);return d.getFullYear()===y&&d.getMonth()===m;});
     const days=new Date(y,m+1,0).getDate();
     const wsStd=settings.work_start||'',weStd=settings.work_end||'';
@@ -700,7 +710,7 @@ async function mountUserTab(){
       const ds=y+'-'+p2(m+1)+'-'+p2(d);
       const dayStr=ds.replace(/-/g,'/');
       const dayRecs=monthRecs.filter(r=>fmtDate(r.timestamp)===dayStr);
-      const s=calcDayStats(dayRecs);
+      const s=calcDayStats(dayRecs,breakTimes);
       const leave=leaves.find(r=>r.date===ds&&r.status==='approved');
       if(s.workMin!=null){totalWork+=s.workMin;totalOver+=s.overMin;totalNight+=s.nightMin;}
       if(leave&&leave.type.startsWith('paid_leave'))paidDays+=leaveDays(leave.type);
@@ -755,7 +765,7 @@ async function mountUserTab(){
 }
 
 async function doPunch(type){
-  const btn=document.getElementById({clock_in:'punchIn',clock_out:'punchOut',break_start:'breakStart',break_end:'breakEnd'}[type]);
+  const btn=document.getElementById({clock_in:'punchIn',clock_out:'punchOut'}[type]);
   if(btn)btn.disabled=true;
   const siteSel=document.getElementById('siteSel');
   const site=siteSel?siteSel.value:null;
@@ -983,6 +993,7 @@ async function mountAdminKintai(){
     getSettings(),
     getClosings()
   ]);
+  const breakTimes=parseBreakSettings(settings);
   const days=new Date(y,m+1,0).getDate();
   const closed=isClosed(closings,ym);
   const wsStd=settings.work_start||'',weStd=settings.work_end||'';
@@ -1004,7 +1015,7 @@ async function mountAdminKintai(){
       const ds=y+'-'+p2(m+1)+'-'+p2(d);
       const dayStr=ds.replace(/-/g,'/');
       const dayRecs=recs.filter(r=>fmtDate(r.timestamp)===dayStr);
-      const s=calcDayStats(dayRecs);
+      const s=calcDayStats(dayRecs,breakTimes);
       const leave=leaves.find(r=>r.date===ds);
       if(s.workMin!=null){totalWork+=s.workMin;totalOver+=s.overMin;totalNight+=s.nightMin;}
       const wd=new Date(y,m,d).getDay();
@@ -1055,7 +1066,7 @@ async function mountAdminKintai(){
     }
     mountAdminKintai();
   });
-  document.getElementById('exportExcel').addEventListener('click',()=>exportXlsx(users,allRecords,allLeaves,settings,y,m));
+  document.getElementById('exportExcel').addEventListener('click',()=>exportXlsx(users,allRecords,allLeaves,settings,breakTimes,y,m));
   document.querySelectorAll('[data-admdelatt]').forEach(btn=>btn.addEventListener('click',async()=>{
     if(!confirm('この打刻を削除しますか？'))return;
     await softDeleteAttendance(btn.getAttribute('data-admdelatt'),'admin');
@@ -1064,7 +1075,7 @@ async function mountAdminKintai(){
 }
 
 /* ===== Excel(xlsx)出力 ===== */
-function exportXlsx(users,allRecords,allLeaves,settings,y,m){
+function exportXlsx(users,allRecords,allLeaves,settings,breakTimes,y,m){
   const days=new Date(y,m+1,0).getDate();
   const wdStr=['日','月','火','水','木','金','土'];
   const rows=[['氏名','日付','曜日','出勤','退勤','休憩','実働','残業','深夜','現場','備考']];
@@ -1075,7 +1086,7 @@ function exportXlsx(users,allRecords,allLeaves,settings,y,m){
       const ds=y+'-'+p2(m+1)+'-'+p2(d);
       const dayStr=ds.replace(/-/g,'/');
       const dayRecs=recs.filter(r=>fmtDate(r.timestamp)===dayStr);
-      const s=calcDayStats(dayRecs);
+      const s=calcDayStats(dayRecs,breakTimes);
       const leave=leaves.find(r=>r.date===ds);
       const notes=[];
       if(s.inRec&&s.inRec.from_reservation)notes.push('予約打刻');
@@ -1123,6 +1134,21 @@ async function mountAdminSettings(){
         <button class="btn btn-navy" id="addSite" style="white-space:nowrap;">追加</button>
       </div>
     </div>
+    <div class="card"><h2>標準休憩時間</h2>
+      <div class="hint">出退勤時刻から自動で差し引かれます。最大3枠まで設定できます。</div>
+      <div id="breakTimesEditor">
+        ${(parseBreakSettings(settings)).map((b,i)=>`<div style="display:flex;gap:8px;align-items:center;margin-top:10px;">
+          <input class="bt-start" type="time" value="${b.start}" style="width:auto;flex:1;">
+          <span>〜</span>
+          <input class="bt-end" type="time" value="${b.end}" style="width:auto;flex:1;">
+          <button class="btn btn-red btn-sm" data-rmbreak="${i}">削除</button>
+        </div>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn btn-line btn-sm" id="addBreak">＋ 追加</button>
+        <button class="btn btn-navy btn-sm" id="saveBreaks">保存</button>
+      </div>
+    </div>
     <div class="card"><h2>標準勤務時間（遅刻・早退判定）</h2>
       <div style="display:flex;gap:12px;">
         <div style="flex:1;"><label>始業</label><input id="setWorkStart" type="time" value="${settings.work_start||''}"></div>
@@ -1161,6 +1187,21 @@ async function mountAdminSettings(){
     await sbUpdate('sites','id=eq.'+id,{active:to==='1'});
     mountAdminSettings();
   }));
+  document.getElementById('addBreak').addEventListener('click',()=>{
+    const ed=document.getElementById('breakTimesEditor');
+    const div=document.createElement('div');
+    div.style.cssText='display:flex;gap:8px;align-items:center;margin-top:10px;';
+    div.innerHTML=`<input class="bt-start" type="time" value="00:00" style="width:auto;flex:1;"><span>〜</span><input class="bt-end" type="time" value="00:30" style="width:auto;flex:1;"><button class="btn btn-red btn-sm" onclick="this.parentElement.remove()">削除</button>`;
+    ed.appendChild(div);
+  });
+  document.getElementById('saveBreaks').addEventListener('click',async()=>{
+    const starts=[...document.querySelectorAll('.bt-start')].map(el=>el.value);
+    const ends=[...document.querySelectorAll('.bt-end')].map(el=>el.value);
+    const times=starts.map((s,i)=>({start:s,end:ends[i]})).filter(b=>b.start&&b.end);
+    await saveSetting('break_times',JSON.stringify(times));
+    showToast('休憩時間を保存しました');
+  });
+  document.querySelectorAll('[data-rmbreak]').forEach(btn=>btn.addEventListener('click',()=>btn.parentElement.remove()));
   document.getElementById('saveHours').addEventListener('click',async()=>{
     await saveSetting('work_start',document.getElementById('setWorkStart').value);
     await saveSetting('work_end',document.getElementById('setWorkEnd').value);
