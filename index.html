@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>勤怠管理</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F5F4EF;--surface:#FFFFFF;--ink:#1C1C1A;--ink-soft:#6B675E;--line:#DEDACE;
+  --navy:#173A5E;--navy-dark:#0F2740;--green:#1C7C4B;--green-dark:#145C38;
+  --amber:#D9730D;--amber-dark:#B25A06;--red:#B3261E;--red-soft:#F6E4E2;--gold:#B08D3E;
+  --radius:14px;
+  --font-display:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif;
+  --font-body:'Noto Sans JP','Hiragino Sans','Yu Gothic',sans-serif;
+  --font-mono:'JetBrains Mono','SF Mono',monospace;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased;}
+#root{min-height:100vh;display:flex;flex-direction:column;}
+.wrap{max-width:960px;margin:0 auto;width:100%;padding:16px;}
+.topbar{background:var(--navy);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:20;}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--font-display);font-weight:700;letter-spacing:.02em;}
+.brand .mark{width:auto;height:30px;padding:0 9px;border-radius:8px;background:linear-gradient(135deg,var(--amber),var(--gold));display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;color:#1C1C1A;font-size:13px;white-space:nowrap;}
+.topbar .userinfo{font-size:13px;opacity:.9;display:flex;align-items:center;gap:12px;}
+.btn{border:none;border-radius:10px;padding:10px 16px;font-family:var(--font-body);font-weight:700;font-size:14px;cursor:pointer;transition:transform .08s ease,filter .15s ease;}
+.btn:active{transform:scale(.97);}
+.btn-ghost{background:rgba(255,255,255,.12);color:#fff;}
+.btn-ghost:hover{background:rgba(255,255,255,.2);}
+.btn-navy{background:var(--navy);color:#fff;}
+.btn-navy:hover{background:var(--navy-dark);}
+.btn-green{background:var(--green);color:#fff;}
+.btn-green:hover{background:var(--green-dark);}
+.btn-line{background:transparent;color:var(--navy);border:1.5px solid var(--line);}
+.btn-line:hover{border-color:var(--navy);}
+.btn-sm{padding:6px 12px;font-size:12.5px;border-radius:8px;}
+.btn:disabled{opacity:.45;cursor:not-allowed;}
+.tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin-bottom:20px;overflow-x:auto;}
+.tab{padding:10px 14px;font-weight:700;font-size:14px;color:var(--ink-soft);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;}
+.tab.active{color:var(--navy);border-color:var(--amber);}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px;}
+h1,h2,h3{font-family:var(--font-display);margin:0 0 8px;}
+h2{font-size:19px;}h3{font-size:15px;color:var(--ink-soft);font-weight:700;}
+label{display:block;font-size:12.5px;color:var(--ink-soft);font-weight:700;margin:12px 0 5px;}
+input,textarea,select{width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:9px;font-size:14.5px;font-family:var(--font-body);background:#fff;color:var(--ink);}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--navy);outline-offset:1px;border-color:var(--navy);}
+.hint{font-size:12px;color:var(--ink-soft);margin-top:4px;}
+.error-box{background:var(--red-soft);color:var(--red);border-radius:9px;padding:10px 12px;font-size:13px;font-weight:600;margin-top:10px;}
+.center-screen{flex:1;display:flex;align-items:center;justify-content:center;padding:24px;}
+.auth-card{max-width:420px;width:100%;}
+.auth-tabs{display:flex;background:#EFEDE5;border-radius:10px;padding:4px;margin-bottom:18px;}
+.auth-tab{flex:1;text-align:center;padding:9px;border-radius:7px;font-weight:700;font-size:13.5px;cursor:pointer;color:var(--ink-soft);}
+.auth-tab.active{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(0,0,0,.08);}
+.instrument{background:var(--navy-dark);border-radius:16px;padding:22px 20px;color:#fff;text-align:center;margin-bottom:18px;border:1px solid #0A1D33;}
+.instrument .clock{font-family:var(--font-mono);font-size:44px;font-weight:700;letter-spacing:.03em;color:#F4D58D;}
+.instrument .date{font-family:var(--font-mono);font-size:13px;color:#9FB4C8;margin-top:4px;letter-spacing:.08em;}
+.instrument .status{margin-top:10px;font-size:13px;font-weight:700;padding:5px 12px;border-radius:20px;display:inline-block;}
+.status-in{background:rgba(28,124,75,.25);color:#7FE0AB;}
+.status-out{background:rgba(217,115,13,.22);color:#F5B26B;}
+.punch-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;}
+.punch-btn{border:none;border-radius:16px;padding:30px 10px;font-family:var(--font-display);font-size:22px;font-weight:900;color:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:transform .08s ease,filter .15s ease;}
+.punch-btn:active{transform:scale(.96);}
+.punch-btn .sub{font-family:var(--font-mono);font-size:12px;font-weight:500;opacity:.85;}
+.punch-in{background:linear-gradient(160deg,var(--green),var(--green-dark));}
+.punch-out{background:linear-gradient(160deg,var(--amber),var(--amber-dark));}
+.rec-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px;}
+.rec-row:last-child{border-bottom:none;}
+.rec-left{display:flex;align-items:center;gap:10px;}
+.dot{width:9px;height:9px;border-radius:50%;}
+.dot-in{background:var(--green);}
+.dot-out{background:var(--amber);}
+.rec-time{font-family:var(--font-mono);font-weight:700;}
+.badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;}
+.badge-pending{background:#FBEFD9;color:#8A6414;}
+.badge-approved{background:#DCF0E3;color:var(--green-dark);}
+.badge-rejected{background:var(--red-soft);color:var(--red);}
+.badge-confirmed{background:#E5ECF3;color:var(--navy);}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--navy-dark);color:#fff;padding:12px 20px;border-radius:10px;font-size:13.5px;font-weight:600;box-shadow:0 8px 20px rgba(0,0,0,.25);z-index:100;opacity:0;transition:opacity .25s ease;pointer-events:none;}
+.toast.show{opacity:1;}
+.modal-bg{position:fixed;inset:0;background:rgba(20,20,18,.5);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px;}
+.modal{background:#fff;border-radius:var(--radius);padding:22px;max-width:440px;width:100%;max-height:88vh;overflow-y:auto;}
+.terms-body{font-size:13.5px;line-height:1.9;color:var(--ink-soft);max-height:50vh;overflow-y:auto;padding-right:6px;}
+.terms-body h4{color:var(--ink);font-size:14px;margin:14px 0 4px;}
+.checkline{display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:13px;}
+.checkline input{width:auto;margin-top:3px;}
+table{width:100%;border-collapse:collapse;font-size:13.5px;}
+th{text-align:left;font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;padding:8px 6px;border-bottom:1.5px solid var(--line);}
+td{padding:9px 6px;border-bottom:1px solid var(--line);font-family:var(--font-mono);font-size:12.8px;}
+.gps-link{color:var(--navy);font-weight:700;text-decoration:none;}
+.gps-link:hover{text-decoration:underline;}
+.empty{text-align:center;color:var(--ink-soft);font-size:13.5px;padding:26px 10px;}
+.user-list-item{display:flex;justify-content:space-between;align-items:center;padding:13px 4px;border-bottom:1px solid var(--line);cursor:pointer;}
+.user-list-item:hover{background:#FAF9F5;}
+.footer-link{text-align:center;padding:14px;font-size:12px;color:var(--ink-soft);}
+.footer-link a{color:var(--navy);cursor:pointer;font-weight:700;}
+@media(max-width:520px){
+  .instrument .clock{font-size:34px;}
+  .punch-btn{padding:24px 8px;font-size:18px;}
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="toast" class="toast"></div>
+<script>
+/* ===== Supabase設定 ===== */
+const SB_URL = 'https://fzgvrropxbsxoffukhax.supabase.co';
+const SB_KEY = 'sb_publishable_aGGnCru9be1hgd7L5-RWQg_bYdaIiNR';
+const ADMIN_PASSCODE = 'K7mP2xQn9R';
+
+async function sbFetch(path, method='GET', body=null){
+  const opts = {
+    method,
+    headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
+  };
+  if(body) opts.body=JSON.stringify(body);
+  const r = await fetch(SB_URL+'/rest/v1/'+path, opts);
+  if(!r.ok){ const e=await r.text(); throw new Error(e); }
+  const text = await r.text();
+  return text ? JSON.parse(text) : [];
+}
+async function sbGet(table, filter=''){
+  return sbFetch(table+'?'+filter+'&order=created_at.desc');
+}
+async function sbInsert(table, row){
+  return sbFetch(table, 'POST', row);
+}
+async function sbUpdate(table, filter, patch){
+  return sbFetch(table+'?'+filter, 'PATCH', patch);
+}
+
+/* ===== ユーティリティ ===== */
+function genId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+function fmtDateTime(iso){
+  if(!iso) return '-';
+  const d=new Date(iso);
+  return d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0')+' '+
+         String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+function fmtTime(iso){ if(!iso) return '-'; const d=new Date(iso); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function fmtDate(iso){ if(!iso) return '-'; const d=new Date(iso); return d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0'); }
+function toDatetimeLocal(iso){ const d=new Date(iso); const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); }
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(window._tt); window._tt=setTimeout(()=>t.classList.remove('show'),2600); }
+function getGPS(){ return new Promise(resolve=>{ if(!navigator.geolocation){resolve(null);return;} navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:Math.round(p.coords.accuracy)}),()=>resolve(null),{enableHighAccuracy:true,timeout:8000,maximumAge:0}); }); }
+
+/* ===== 業務ロジック ===== */
+async function registerUser(name,email,password){
+  try{
+    const existing = await sbFetch('users?email=eq.'+encodeURIComponent(email)+'&select=email');
+    if(existing.length>0) return {error:'このメールアドレスは既に登録されています。'};
+    await sbInsert('users',{email,name,pass:password,created_at:new Date().toISOString()});
+    return {ok:true};
+  }catch(e){ return {error:'登録エラー: '+e.message}; }
+}
+async function loginUser(email,password){
+  try{
+    const rows = await sbFetch('users?email=eq.'+encodeURIComponent(email)+'&pass=eq.'+encodeURIComponent(password)+'&select=email,name');
+    if(!rows.length) return {error:'メールアドレスまたはパスワードが違います。'};
+    return {ok:true, user:rows[0]};
+  }catch(e){ return {error:'ログインエラー: '+e.message}; }
+}
+async function punch(email,type){
+  const gps = await getGPS();
+  const row = {id:genId(),email,type,timestamp:new Date().toISOString(),gps_lat:gps?gps.lat:null,gps_lng:gps?gps.lng:null,gps_accuracy:gps?gps.accuracy:null,corrected:false};
+  await sbInsert('attendance',row);
+  return row;
+}
+async function getAttendance(email){
+  return sbFetch('attendance?email=eq.'+encodeURIComponent(email)+'&order=timestamp.desc');
+}
+async function getAllUsers(){
+  return sbFetch('users?select=email,name&order=created_at.asc');
+}
+async function submitCorrection(email,recordId,type,oldTime,requestedTime,reason){
+  await sbInsert('corrections',{id:genId(),email,record_id:recordId,type,old_time:oldTime,requested_time:requestedTime,reason,status:'pending',admin_note:'',created_at:new Date().toISOString()});
+}
+async function getCorrections(email){
+  return sbFetch('corrections?email=eq.'+encodeURIComponent(email)+'&order=created_at.desc');
+}
+async function getAllCorrections(){
+  return sbFetch('corrections?order=created_at.desc');
+}
+async function approveCorrection(id,recordId,requestedTime){
+  await sbUpdate('corrections','id=eq.'+id,{status:'approved'});
+  await sbUpdate('attendance','id=eq.'+recordId,{timestamp:requestedTime,corrected:true});
+}
+async function rejectCorrection(id,note){
+  await sbUpdate('corrections','id=eq.'+id,{status:'rejected',admin_note:note||''});
+}
+async function submitReservation(email,type,scheduledTime,reason){
+  await sbInsert('reservations',{id:genId(),email,type,scheduled_time:scheduledTime,reason,status:'registered',created_at:new Date().toISOString()});
+}
+async function getReservations(email){
+  return sbFetch('reservations?email=eq.'+encodeURIComponent(email)+'&order=scheduled_time.desc');
+}
+async function getAllReservations(){
+  return sbFetch('reservations?order=scheduled_time.asc');
+}
+async function confirmReservation(id){
+  await sbUpdate('reservations','id=eq.'+id,{status:'confirmed'});
+}
+
+/* ===== 規約 ===== */
+const TERMS_HTML = `
+<h4>第1条（目的）</h4>
+<p>本規約は、当社が提供する勤怠管理アプリ（以下「本アプリ」）の利用条件を定めるものです。</p>
+<h4>第2条（情報の利用目的）</h4>
+<p>取得した情報は、勤怠状況の正確な記録・給与計算の基礎資料・不正打刻の防止・労務管理のためにのみ利用し、目的外には利用しません。</p>
+<h4>第3条（修正依頼）</h4>
+<p>利用者は自身の打刻内容に誤りがある場合、修正を依頼できます。修正は管理者が承認した時点で反映されます。</p>
+<h4>第4条（取得する情報）</h4>
+<p>本アプリは、利用者の氏名・メールアドレス・パスワード（登録情報）、出勤・退勤の打刻時刻、および打刻ボタン押下時に取得される位置情報を取得します。</p>
+<h4>第5条（免責事項）</h4>
+<p>通信状況により、正確な情報が取得できない場合があります。これによる不利益について当社は責任を負わないものとします。</p>
+<h4>第6条（本規約について）</h4>
+<p>本文書は運用開始にあたっての社内向けドラフトです。実運用にあたっては、個人情報保護法・労働基準法等の関連法令に照らし、社会保険労務士・弁護士等の確認を受けたうえで正式な規程として整備してください。</p>
+`;
+
+/* ===== 状態 ===== */
+let state={view:'login',currentUser:null,isAdmin:false,error:'',adminExpandedUser:null,adminTab:'users',userTab:'punch',correctionModal:null};
+let clockTimer=null,pollTimer=null;
+let authTab='login';
+const root=document.getElementById('root');
+
+function render(){
+  if(clockTimer){clearInterval(clockTimer);clockTimer=null;}
+  if(state.view==='login') root.innerHTML=renderAuth();
+  else if(state.view==='user') root.innerHTML=renderUserShell();
+  else if(state.view==='admin') root.innerHTML=renderAdminShell();
+  attachHandlers();
+}
+
+/* ===== 認証画面 ===== */
+function renderAuth(){
+  return `<div class="center-screen"><div class="card auth-card">
+    <div style="text-align:center;margin-bottom:18px;">
+      <div class="brand" style="justify-content:center;color:var(--navy);"><div class="mark">でずら！</div><h1 style="font-size:20px;">勤怠管理</h1></div>
+    </div>
+    <div class="auth-tabs">
+      <div class="auth-tab ${authTab==='login'?'active':''}" data-authtab="login">ログイン</div>
+      <div class="auth-tab ${authTab==='register'?'active':''}" data-authtab="register">新規登録</div>
+      <div class="auth-tab ${authTab==='admin'?'active':''}" data-authtab="admin">管理者</div>
+    </div>
+    ${authTab==='login'?renderLoginForm():authTab==='register'?renderRegisterForm():renderAdminForm()}
+    ${authTab==='register'?`
+    <div class="checkline" style="justify-content:center;">
+      <input type="checkbox" id="agreeCheck">
+      <label style="margin:0;font-weight:400;color:var(--ink-soft);font-size:12px;">
+        利用にあたり <a id="openTermsLink" style="color:var(--navy);font-weight:700;cursor:pointer;">利用規約</a> に同意します
+      </label>
+    </div>`:`<div class="footer-link">利用にあたり <a id="openTermsLink">利用規約</a> をご確認ください</div>`}
+  </div></div>`;
+}
+function renderLoginForm(){ return `
+  <label>メールアドレス</label><input id="loginEmail" type="email" placeholder="you@example.com">
+  <label>パスワード</label><input id="loginPass" type="password" placeholder="パスワード">
+  <button class="btn btn-navy" id="loginBtn" style="width:100%;margin-top:16px;">ログイン</button>`; }
+function renderRegisterForm(){ return `
+  <label>氏名</label><input id="regName" type="text" placeholder="山田 太郎">
+  <label>メールアドレス</label><input id="regEmail" type="email" placeholder="you@example.com">
+  <label>パスワード</label><input id="regPass" type="password" placeholder="8文字以上推奨">
+  <label>パスワード（確認）</label><input id="regPass2" type="password" placeholder="もう一度入力">
+  <button class="btn btn-green" id="registerBtn" style="width:100%;margin-top:16px;">登録する</button>`; }
+function renderAdminForm(){ return `
+  <label>管理者パスコード</label><input id="adminPass" type="password" placeholder="パスコードを入力">
+  <div class="hint">管理者用の別ログインです。</div>
+  <button class="btn btn-navy" id="adminLoginBtn" style="width:100%;margin-top:16px;">管理者としてログイン</button>`; }
+
+/* ===== ユーザーシェル ===== */
+function renderUserShell(){
+  return `<div class="topbar">
+    <div class="brand"><div class="mark">でずら！</div>勤怠管理</div>
+    <div class="userinfo">${escapeHtml(state.currentUser.name)} 様 <button class="btn btn-ghost btn-sm" id="logoutBtn">ログアウト</button></div>
+  </div>
+  <div class="wrap">
+    <div class="tabs">
+      <div class="tab ${state.userTab==='punch'?'active':''}" data-utab="punch">打刻</div>
+      <div class="tab ${state.userTab==='history'?'active':''}" data-utab="history">履歴・修正依頼</div>
+      <div class="tab ${state.userTab==='reserve'?'active':''}" data-utab="reserve">出退勤予約</div>
+      <div class="tab" id="openTermsLink3">利用規約</div>
+    </div>
+    <div id="userTabBody">読み込み中...</div>
+  </div>`;
+}
+
+/* ===== 管理者シェル ===== */
+function renderAdminShell(){
+  return `<div class="topbar">
+    <div class="brand"><div class="mark">でずら！</div>勤怠管理｜管理者</div>
+    <div class="userinfo"><button class="btn btn-ghost btn-sm" id="adminRefreshBtn">更新</button><button class="btn btn-ghost btn-sm" id="adminLogoutBtn">ログアウト</button></div>
+  </div>
+  <div class="wrap">
+    <div class="tabs">
+      <div class="tab ${state.adminTab==='users'?'active':''}" data-atab="users">ユーザー一覧</div>
+      <div class="tab ${state.adminTab==='corrections'?'active':''}" data-atab="corrections">修正依頼</div>
+      <div class="tab ${state.adminTab==='reservations'?'active':''}" data-atab="reservations">出退勤予約</div>
+    </div>
+    <div id="adminTabBody">読み込み中...</div>
+  </div>`;
+}
+
+/* ===== イベント接続 ===== */
+function attachHandlers(){
+  ['openTermsLink','openTermsLink2','openTermsLink3'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.addEventListener('click',openTermsModal);
+  });
+
+  if(state.view==='login'){
+    document.querySelectorAll('[data-authtab]').forEach(el=>el.addEventListener('click',()=>{ authTab=el.getAttribute('data-authtab'); render(); }));
+    const loginBtn=document.getElementById('loginBtn');
+    if(loginBtn) loginBtn.addEventListener('click',async()=>{
+      const email=document.getElementById('loginEmail').value.trim();
+      const pass=document.getElementById('loginPass').value;
+      if(!email||!pass){showAuthErr('メールアドレスとパスワードを入力してください。');return;}
+      loginBtn.disabled=true; loginBtn.textContent='確認中...';
+      const r=await loginUser(email,pass);
+      loginBtn.disabled=false; loginBtn.textContent='ログイン';
+      if(r.error) showAuthErr(r.error);
+      else{state.view='user';state.currentUser=r.user;state.userTab='punch';saveSession(r.user);render();mountUserTab();}
+    });
+    const regBtn=document.getElementById('registerBtn');
+    if(regBtn) regBtn.addEventListener('click',async()=>{
+      const name=document.getElementById('regName').value.trim();
+      const email=document.getElementById('regEmail').value.trim();
+      const p1=document.getElementById('regPass').value;
+      const p2=document.getElementById('regPass2').value;
+      const agree=document.getElementById('agreeCheck').checked;
+      const showErr=msg=>{let eb=document.getElementById('authErrorBox');if(!eb){eb=document.createElement('div');eb.id='authErrorBox';eb.className='error-box';document.getElementById('registerBtn').after(eb);}eb.textContent=msg;};
+      if(!name||!email||!p1){showErr('すべての項目を入力してください。');return;}
+      if(p1!==p2){showErr('パスワードが一致しません。');return;}
+      if(!agree){showErr('利用規約への同意が必要です。');return;}
+      regBtn.disabled=true; regBtn.textContent='登録中...';
+      const r=await registerUser(name,email,p1);
+      regBtn.disabled=false; regBtn.textContent='登録する';
+      if(r.error) showErr(r.error);
+      else{authTab='login';render();showToast('登録が完了しました。ログインしてください。');}
+    });
+    const adminBtn=document.getElementById('adminLoginBtn');
+    if(adminBtn) adminBtn.addEventListener('click',()=>{
+      const pass=document.getElementById('adminPass').value;
+      if(pass===ADMIN_PASSCODE){state.view='admin';state.isAdmin=true;render();mountAdminTab();startPoll();}
+      else showAuthErr('パスコードが違います。');
+    });
+  }
+
+  if(state.view==='user'){
+    document.getElementById('logoutBtn').addEventListener('click',()=>{stopPoll();clearSession();state.view='login';state.currentUser=null;render();});
+    document.querySelectorAll('[data-utab]').forEach(el=>el.addEventListener('click',()=>{state.userTab=el.getAttribute('data-utab');render();mountUserTab();}));
+    mountUserTab();
+  }
+
+  if(state.view==='admin'){
+    document.getElementById('adminLogoutBtn').addEventListener('click',()=>{stopPoll();state.view='login';state.isAdmin=false;render();});
+    document.getElementById('adminRefreshBtn').addEventListener('click',()=>mountAdminTab());
+    document.querySelectorAll('[data-atab]').forEach(el=>el.addEventListener('click',()=>{state.adminTab=el.getAttribute('data-atab');render();}));
+    mountAdminTab();
+  }
+}
+
+function showAuthErr(msg){
+  let eb=document.getElementById('authErrorBox');
+  if(!eb){eb=document.createElement('div');eb.id='authErrorBox';eb.className='error-box';
+    const btn=document.getElementById('loginBtn')||document.getElementById('adminLoginBtn');
+    if(btn) btn.after(eb);
+    else document.querySelector('.auth-card').appendChild(eb);
+  }
+  eb.textContent=msg;
+}
+
+/* ===== ユーザータブ ===== */
+async function mountUserTab(){
+  const body=document.getElementById('userTabBody');
+  if(!body) return;
+  const email=state.currentUser.email;
+
+  if(state.userTab==='punch'){
+    const records = await getAttendance(email);
+    const last=records[0];
+    const isIn=last&&last.type==='clock_in';
+    const today=new Date().toDateString();
+    const todays=records.filter(r=>new Date(r.timestamp).toDateString()===today).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+    body.innerHTML=`
+      <div class="instrument">
+        <div class="clock" id="liveClock">--:--:--</div>
+        <div class="date" id="liveDate">----/--/--</div>
+        <div class="status ${isIn?'status-in':'status-out'}">${isIn?'現在：出勤中':'現在：退勤中 / 未出勤'}</div>
+      </div>
+      <div class="punch-grid">
+        <button class="punch-btn punch-in" id="punchIn">出勤<span class="sub">CLOCK IN</span></button>
+        <button class="punch-btn punch-out" id="punchOut">退勤<span class="sub">CLOCK OUT</span></button>
+      </div>
+      <div class="card"><h3>本日の打刻</h3>
+        ${todays.length?todays.map(r=>`<div class="rec-row"><div class="rec-left"><span class="dot ${r.type==='clock_in'?'dot-in':'dot-out'}"></span>${r.type==='clock_in'?'出勤':'退勤'}</div><span class="rec-time">${fmtTime(r.timestamp)}</span></div>`).join(''):'<div class="empty">本日の打刻はまだありません</div>'}
+      </div>`;
+    document.getElementById('punchIn').addEventListener('click',()=>doPunch('clock_in'));
+    document.getElementById('punchOut').addEventListener('click',()=>doPunch('clock_out'));
+    tickClock();
+  }
+  else if(state.userTab==='history'){
+    const [records,corrections]=await Promise.all([getAttendance(email),getCorrections(email)]);
+    body.innerHTML=`
+      <div class="card"><h2>打刻履歴</h2>
+        ${records.length?records.map(r=>`
+          <div class="rec-row">
+            <div class="rec-left"><span class="dot ${r.type==='clock_in'?'dot-in':'dot-out'}"></span>
+              <div><div>${fmtDate(r.timestamp)} ${r.type==='clock_in'?'出勤':'退勤'} ${r.corrected?'<span class="badge badge-approved">修正済</span>':''}</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="rec-time">${fmtTime(r.timestamp)}</span>
+              <button class="btn btn-line btn-sm" data-fixrec="${r.id}" data-fixtype="${r.type}" data-fixtime="${r.timestamp}">修正依頼</button>
+            </div>
+          </div>`).join(''):'<div class="empty">打刻履歴がありません</div>'}
+      </div>
+      <div class="card"><h2>修正依頼の状況</h2>
+        ${corrections.length?corrections.map(c=>`
+          <div class="rec-row">
+            <div>
+              <div>${c.type==='clock_in'?'出勤':'退勤'}：${fmtDateTime(c.old_time)} → ${fmtDateTime(c.requested_time)}</div>
+              <div class="hint">理由：${escapeHtml(c.reason)}</div>
+              ${c.status==='rejected'&&c.admin_note?`<div class="hint">却下理由：${escapeHtml(c.admin_note)}</div>`:''}
+            </div>
+            <span class="badge badge-${c.status==='pending'?'pending':c.status==='approved'?'approved':'rejected'}">${c.status==='pending'?'審査中':c.status==='approved'?'承認済み':'却下'}</span>
+          </div>`).join(''):'<div class="empty">修正依頼はありません</div>'}
+      </div>`;
+    document.querySelectorAll('[data-fixrec]').forEach(btn=>btn.addEventListener('click',()=>{
+      state.correctionModal={recordId:btn.getAttribute('data-fixrec'),type:btn.getAttribute('data-fixtype'),oldTime:btn.getAttribute('data-fixtime')};
+      openCorrectionModal();
+    }));
+  }
+  else if(state.userTab==='reserve'){
+    const reservations=await getReservations(email);
+    body.innerHTML=`
+      <div class="card"><h2>出退勤予約の登録</h2>
+        <label>種別</label><select id="resType"><option value="clock_in">出勤予約</option><option value="clock_out">退勤予約</option></select>
+        <label>予定日時</label><input id="resTime" type="datetime-local">
+        <label>理由（任意）</label><textarea id="resReason" rows="2" placeholder="例：通院のため10時出勤予定"></textarea>
+        <button class="btn btn-navy" id="resSubmit" style="width:100%;margin-top:14px;">予約を登録</button>
+      </div>
+      <div class="card"><h2>登録済みの予約</h2>
+        ${reservations.length?reservations.map(r=>`
+          <div class="rec-row">
+            <div>
+              <div>${r.type==='clock_in'?'出勤予約':'退勤予約'}：${fmtDateTime(r.scheduled_time)}</div>
+              ${r.reason?`<div class="hint">${escapeHtml(r.reason)}</div>`:''}
+            </div>
+            <span class="badge badge-${r.status==='confirmed'?'confirmed':'pending'}">${r.status==='confirmed'?'管理者確認済み':'登録済み'}</span>
+          </div>`).join(''):'<div class="empty">予約はありません</div>'}
+      </div>`;
+    document.getElementById('resSubmit').addEventListener('click',async()=>{
+      const type=document.getElementById('resType').value;
+      const time=document.getElementById('resTime').value;
+      const reason=document.getElementById('resReason').value.trim();
+      if(!time){showToast('予定日時を入力してください');return;}
+      await submitReservation(email,type,new Date(time).toISOString(),reason);
+      showToast('予約を登録しました');
+      mountUserTab();
+    });
+  }
+}
+
+async function doPunch(type){
+  const btn=document.getElementById(type==='clock_in'?'punchIn':'punchOut');
+  if(btn){btn.disabled=true;}
+  const rec=await punch(state.currentUser.email,type);
+  showToast((type==='clock_in'?'出勤':'退勤')+'を記録しました　'+fmtTime(rec.timestamp));
+  mountUserTab();
+}
+
+function tickClock(){
+  function upd(){
+    const el=document.getElementById('liveClock');const dl=document.getElementById('liveDate');
+    if(!el){clearInterval(clockTimer);clockTimer=null;return;}
+    const d=new Date();
+    el.textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+    const days=['日','月','火','水','木','金','土'];
+    dl.textContent=d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0')+'（'+days[d.getDay()]+'）';
+  }
+  upd(); clockTimer=setInterval(upd,1000);
+}
+
+/* ===== 修正依頼モーダル ===== */
+function openCorrectionModal(){
+  const m=state.correctionModal;
+  document.getElementById('correctionModalBg')?.remove();
+  const bg=document.createElement('div');
+  bg.className='modal-bg';bg.id='correctionModalBg';
+  bg.innerHTML=`<div class="modal">
+    <h2>打刻の修正依頼</h2>
+    <div class="hint">現在の記録：${m.type==='clock_in'?'出勤':'退勤'} ${fmtDateTime(m.oldTime)}</div>
+    <label>正しい日時</label><input id="corTime" type="datetime-local" value="${toDatetimeLocal(m.oldTime)}">
+    <label>修正理由</label><textarea id="corReason" rows="3" placeholder="例：打刻を忘れ、実際は8:55出勤でした"></textarea>
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button class="btn btn-line" id="corCancel" style="flex:1;">キャンセル</button>
+      <button class="btn btn-navy" id="corSubmit" style="flex:1;">依頼を送信</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+  document.getElementById('corCancel').addEventListener('click',()=>{state.correctionModal=null;bg.remove();});
+  document.getElementById('corSubmit').addEventListener('click',async()=>{
+    const time=document.getElementById('corTime').value;
+    const reason=document.getElementById('corReason').value.trim();
+    if(!time||!reason){showToast('日時と理由を入力してください');return;}
+    await submitCorrection(state.currentUser.email,m.recordId,m.type,m.oldTime,new Date(time).toISOString(),reason);
+    state.correctionModal=null;bg.remove();
+    showToast('修正依頼を送信しました');
+    mountUserTab();
+  });
+}
+
+/* ===== 規約モーダル ===== */
+function openTermsModal(){
+  document.getElementById('termsModalBg')?.remove();
+  const bg=document.createElement('div');
+  bg.className='modal-bg';bg.id='termsModalBg';
+  bg.innerHTML=`<div class="modal"><h2>利用規約</h2><div class="terms-body">${TERMS_HTML}</div><button class="btn btn-navy" id="termsClose" style="width:100%;margin-top:16px;">閉じる</button></div>`;
+  document.body.appendChild(bg);
+  document.getElementById('termsClose').addEventListener('click',()=>bg.remove());
+}
+
+/* ===== 管理者タブ ===== */
+function startPoll(){stopPoll();pollTimer=setInterval(()=>{if(state.view==='admin')mountAdminTab();},15000);}
+function stopPoll(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
+
+async function mountAdminTab(){
+  const body=document.getElementById('adminTabBody');
+  if(!body) return;
+
+  if(state.adminTab==='users'){
+    const users=await getAllUsers();
+    let expanded='';
+    if(state.adminExpandedUser){
+      const u=users.find(x=>x.email===state.adminExpandedUser);
+      if(u){
+        const records=await sbFetch('attendance?email=eq.'+encodeURIComponent(u.email)+'&order=timestamp.desc');
+        expanded=`<div class="card">
+          <h3>${escapeHtml(u.name)}（${escapeHtml(u.email)}）の打刻詳細（GPS含む）</h3>
+          <table><thead><tr><th>種別</th><th>日時</th><th>GPS座標</th><th>精度</th><th>地図</th></tr></thead><tbody>
+          ${records.length?records.map(r=>`<tr>
+            <td>${r.type==='clock_in'?'出勤':'退勤'}${r.corrected?' ✎':''}</td>
+            <td>${fmtDateTime(r.timestamp)}</td>
+            <td>${r.gps_lat!=null?r.gps_lat.toFixed(6)+', '+r.gps_lng.toFixed(6):'取得不可'}</td>
+            <td>${r.gps_accuracy!=null?'±'+r.gps_accuracy+'m':'-'}</td>
+            <td>${r.gps_lat!=null?`<a class="gps-link" target="_blank" href="https://maps.google.com/?q=${r.gps_lat},${r.gps_lng}">地図を開く</a>`:'-'}</td>
+          </tr>`).join(''):'<tr><td colspan="5" class="empty">記録がありません</td></tr>'}
+          </tbody></table></div>`;
+      }
+    }
+    body.innerHTML=`<div class="card"><h2>登録ユーザー（${users.length}名）</h2>
+      ${users.length?users.map(u=>`
+        <div class="user-list-item" data-adminuser="${u.email}">
+          <div><strong>${escapeHtml(u.name)}</strong><div class="hint">${escapeHtml(u.email)}</div></div>
+          <span class="hint">詳細を見る ›</span>
+        </div>`).join(''):'<div class="empty">登録ユーザーはいません</div>'}
+    </div>${expanded}`;
+    document.querySelectorAll('[data-adminuser]').forEach(el=>el.addEventListener('click',()=>{state.adminExpandedUser=el.getAttribute('data-adminuser');mountAdminTab();}));
+  }
+
+  else if(state.adminTab==='corrections'){
+    const [users,corrections]=await Promise.all([getAllUsers(),getAllCorrections()]);
+    const userMap=Object.fromEntries(users.map(u=>[u.email,u.name]));
+    body.innerHTML=`<div class="card"><h2>修正依頼一覧</h2>
+      ${corrections.length?corrections.map(c=>`
+        <div class="rec-row" style="align-items:flex-start;">
+          <div>
+            <div><strong>${escapeHtml(userMap[c.email]||c.email)}</strong>　${c.type==='clock_in'?'出勤':'退勤'}</div>
+            <div class="hint">${fmtDateTime(c.old_time)} → ${fmtDateTime(c.requested_time)}</div>
+            <div class="hint">理由：${escapeHtml(c.reason)}</div>
+            ${c.status==='rejected'&&c.admin_note?`<div class="hint">却下理由：${escapeHtml(c.admin_note)}</div>`:''}
+          </div>
+          <div style="text-align:right;">
+            <span class="badge badge-${c.status==='pending'?'pending':c.status==='approved'?'approved':'rejected'}">${c.status==='pending'?'審査中':c.status==='approved'?'承認済み':'却下'}</span>
+            ${c.status==='pending'?`<div style="margin-top:8px;display:flex;gap:6px;">
+              <button class="btn btn-green btn-sm" data-approve="${c.id}|${c.record_id}|${c.requested_time}">承認</button>
+              <button class="btn btn-line btn-sm" data-reject="${c.id}">却下</button>
+            </div>`:''}
+          </div>
+        </div>`).join(''):'<div class="empty">修正依頼はありません</div>'}
+    </div>`;
+    document.querySelectorAll('[data-approve]').forEach(btn=>btn.addEventListener('click',async()=>{
+      const [id,recId,reqTime]=btn.getAttribute('data-approve').split('|');
+      await approveCorrection(id,recId,reqTime);
+      showToast('承認しました');mountAdminTab();
+    }));
+    document.querySelectorAll('[data-reject]').forEach(btn=>btn.addEventListener('click',async()=>{
+      const id=btn.getAttribute('data-reject');
+      const note=prompt('却下理由（任意）')||'';
+      await rejectCorrection(id,note);
+      showToast('却下しました');mountAdminTab();
+    }));
+  }
+
+  else if(state.adminTab==='reservations'){
+    const [users,reservations]=await Promise.all([getAllUsers(),getAllReservations()]);
+    const userMap=Object.fromEntries(users.map(u=>[u.email,u.name]));
+    body.innerHTML=`<div class="card"><h2>出退勤予約一覧</h2>
+      ${reservations.length?reservations.map(r=>`
+        <div class="rec-row">
+          <div>
+            <div><strong>${escapeHtml(userMap[r.email]||r.email)}</strong>　${r.type==='clock_in'?'出勤予約':'退勤予約'}：${fmtDateTime(r.scheduled_time)}</div>
+            ${r.reason?`<div class="hint">${escapeHtml(r.reason)}</div>`:''}
+          </div>
+          <div style="text-align:right;">
+            <span class="badge badge-${r.status==='confirmed'?'confirmed':'pending'}">${r.status==='confirmed'?'確認済み':'未確認'}</span>
+            ${r.status!=='confirmed'?`<div style="margin-top:6px;"><button class="btn btn-line btn-sm" data-confirmres="${r.id}">確認済みにする</button></div>`:''}
+          </div>
+        </div>`).join(''):'<div class="empty">予約はありません</div>'}
+    </div>`;
+    document.querySelectorAll('[data-confirmres]').forEach(btn=>btn.addEventListener('click',async()=>{
+      await confirmReservation(btn.getAttribute('data-confirmres'));
+      mountAdminTab();
+    }));
+  }
+}
+
+/* ===== 自動ログイン ===== */
+function saveSession(user){ localStorage.setItem('dezura_session', JSON.stringify(user)); }
+function clearSession(){ localStorage.removeItem('dezura_session'); }
+function loadSession(){ try{ const v=localStorage.getItem('dezura_session'); return v?JSON.parse(v):null; }catch(e){return null;} }
+
+const saved = loadSession();
+if(saved){ state.view='user'; state.currentUser=saved; }
+render();
+if(saved) mountUserTab();
+</body>
+</html>
