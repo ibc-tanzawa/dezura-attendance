@@ -58,13 +58,21 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--navy);outline-of
 .instrument .status{margin-top:10px;font-size:13px;font-weight:700;padding:5px 12px;border-radius:20px;display:inline-block;}
 .status-in{background:rgba(28,124,75,.25);color:#7FE0AB;}
 .status-out{background:rgba(217,115,13,.22);color:#F5B26B;}
-.offline-bar{background:#7B4F00;color:#FFE0A0;text-align:center;font-size:12.5px;font-weight:700;padding:6px;position:sticky;top:58px;z-index:19;}
+.offline-bar{background:#7B4F00;color:#FFE0A0;text-align:center;font-size:12.5px;font-weight:700;padding:7px;position:sticky;top:58px;z-index:19;}
 .punch-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;}
 .punch-btn{border:none;border-radius:16px;padding:30px 10px;font-family:var(--font-display);font-size:22px;font-weight:900;color:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;transition:transform .08s ease,filter .15s ease;}
 .punch-btn:active{transform:scale(.96);}
 .punch-btn .sub{font-family:var(--font-mono);font-size:12px;font-weight:500;opacity:.85;}
 .punch-in{background:linear-gradient(160deg,var(--green),var(--green-dark));}
 .punch-out{background:linear-gradient(160deg,var(--amber),var(--amber-dark));}
+.reserve-card{background:linear-gradient(135deg,#1A2E45,#0F2740);border-radius:12px;padding:14px 16px;margin-bottom:18px;color:#fff;}
+.reserve-card .rc-label{font-size:11px;color:#9FB4C8;font-weight:700;letter-spacing:.06em;margin-bottom:6px;}
+.reserve-card .rc-items{display:flex;flex-direction:column;gap:8px;}
+.reserve-card .rc-item{display:flex;justify-content:space-between;align-items:center;font-size:14px;}
+.reserve-card .rc-time{font-family:var(--font-mono);font-weight:700;color:#F4D58D;}
+.reserve-card .rc-type{font-size:12px;padding:3px 8px;border-radius:12px;}
+.rc-in{background:rgba(28,124,75,.3);color:#7FE0AB;}
+.rc-out{background:rgba(217,115,13,.3);color:#F5B26B;}
 .rec-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px;}
 .rec-row:last-child{border-bottom:none;}
 .rec-left{display:flex;align-items:center;gap:10px;}
@@ -109,19 +117,37 @@ td{padding:9px 6px;border-bottom:1px solid var(--line);font-family:var(--font-mo
 <div id="root"></div>
 <div id="toast" class="toast"></div>
 <script>
-/* ===== Supabase設定 ===== */
-const SB_URL = 'https://fzgvrropxbsxoffukhax.supabase.co';
-const SB_KEY = 'sb_publishable_aGGnCru9be1hgd7L5-RWQg_bYdaIiNR';
-const ADMIN_PASSCODE = 'K7mP2xQn9R';
+/* ===== Service Worker登録 ===== */
+if('serviceWorker' in navigator){
+  const swCode=`
+const CACHE='dezura-v1';
+const ASSETS=[location.pathname];
+self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));
+self.addEventListener('fetch',e=>{
+  if(e.request.url.includes('supabase.co')){e.respondWith(fetch(e.request));return;}
+  e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{
+    const clone=res.clone();
+    caches.open(CACHE).then(c=>c.put(e.request,clone));
+    return res;
+  })));
+});`;
+  const blob=new Blob([swCode],{type:'application/javascript'});
+  const url=URL.createObjectURL(blob);
+  navigator.serviceWorker.register(url).catch(()=>{});
+}
 
-async function sbFetch(path, method='GET', body=null){
+/* ===== Supabase ===== */
+const SB_URL='https://fzgvrropxbsxoffukhax.supabase.co';
+const SB_KEY='sb_publishable_aGGnCru9be1hgd7L5-RWQg_bYdaIiNR';
+const ADMIN_PASSCODE='K7mP2xQn9R';
+
+async function sbFetch(path,method='GET',body=null){
   const opts={method,headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}};
-  if(body) opts.body=JSON.stringify(body);
+  if(body)opts.body=JSON.stringify(body);
   const r=await fetch(SB_URL+'/rest/v1/'+path,opts);
   if(!r.ok){const e=await r.text();throw new Error(e);}
   const t=await r.text();return t?JSON.parse(t):[];
 }
-async function sbGet(path){return sbFetch(path);}
 async function sbInsert(table,row){return sbFetch(table,'POST',row);}
 async function sbUpdate(table,filter,patch){return sbFetch(table+'?'+filter,'PATCH',patch);}
 
@@ -131,40 +157,36 @@ function queueGet(){try{return JSON.parse(localStorage.getItem(QUEUE_KEY)||'[]')
 function queueSave(q){localStorage.setItem(QUEUE_KEY,JSON.stringify(q));}
 function queueAdd(item){const q=queueGet();q.push(item);queueSave(q);}
 async function syncQueue(){
-  const q=queueGet();
-  if(!q.length) return;
+  const q=queueGet();if(!q.length)return;
   const failed=[];
-  for(const item of q){
-    try{ await sbInsert(item.table,item.row); }
-    catch(e){ failed.push(item); }
-  }
+  for(const item of q){try{await sbInsert(item.table,item.row);}catch(e){failed.push(item);}}
   queueSave(failed);
-  if(failed.length<q.length) showToast('オフライン中の打刻を同期しました');
+  if(failed.length<q.length)showToast('オフライン中の打刻を同期しました');
 }
-window.addEventListener('online',()=>{ syncQueue(); renderOfflineBar(); });
-window.addEventListener('offline',()=>{ renderOfflineBar(); });
+window.addEventListener('online',()=>{syncQueue();renderOfflineBar();});
+window.addEventListener('offline',()=>renderOfflineBar());
 function renderOfflineBar(){
   document.getElementById('offlineBar')?.remove();
   if(!navigator.onLine){
     const bar=document.createElement('div');
     bar.id='offlineBar';bar.className='offline-bar';
     bar.textContent='⚠ オフライン中 — 打刻はオンライン復帰後に自動送信されます';
-    document.getElementById('root').after(bar);
+    document.body.insertBefore(bar,document.getElementById('root').nextSibling);
   }
 }
 
 /* ===== ユーティリティ ===== */
 function genId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
+function p2(n){return String(n).padStart(2,'0');}
 function fmtDateTime(iso){if(!iso)return'-';const d=new Date(iso);return d.getFullYear()+'/'+p2(d.getMonth()+1)+'/'+p2(d.getDate())+' '+p2(d.getHours())+':'+p2(d.getMinutes());}
 function fmtTime(iso){if(!iso)return'-';const d=new Date(iso);return p2(d.getHours())+':'+p2(d.getMinutes());}
 function fmtDate(iso){if(!iso)return'-';const d=new Date(iso);return d.getFullYear()+'/'+p2(d.getMonth()+1)+'/'+p2(d.getDate());}
-function p2(n){return String(n).padStart(2,'0');}
 function toDatetimeLocal(iso){const d=new Date(iso);return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate())+'T'+p2(d.getHours())+':'+p2(d.getMinutes());}
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.remove('show'),2600);}
 function getGPS(){return new Promise(resolve=>{if(!navigator.geolocation){resolve(null);return;}navigator.geolocation.getCurrentPosition(p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:Math.round(p.coords.accuracy)}),()=>resolve(null),{enableHighAccuracy:true,timeout:8000,maximumAge:0});});}
 
-/* ===== 業務ロジック ===== */
+/* ===== API ===== */
 async function registerUser(name,email,password){
   try{
     const ex=await sbFetch('users?email=eq.'+encodeURIComponent(email)+'&select=email');
@@ -183,21 +205,17 @@ async function loginUser(email,password){
 async function punch(email,type){
   const gps=await getGPS();
   const row={id:genId(),email,type,timestamp:new Date().toISOString(),gps_lat:gps?gps.lat:null,gps_lng:gps?gps.lng:null,gps_accuracy:gps?gps.accuracy:null,corrected:false};
-  if(navigator.onLine){
-    await sbInsert('attendance',row);
-  } else {
-    queueAdd({table:'attendance',row});
-    showToast('オフラインのため端末に保存しました');
-  }
+  if(navigator.onLine){await sbInsert('attendance',row);}
+  else{queueAdd({table:'attendance',row});}
   return row;
 }
-async function getAttendance(email){return sbFetch('attendance?email=eq.'+encodeURIComponent(email)+'&order=timestamp.desc');}
-async function getAllUsers(){return sbFetch('users?select=email,name&order=created_at.asc');}
+async function getAttendance(email){try{return await sbFetch('attendance?email=eq.'+encodeURIComponent(email)+'&order=timestamp.desc');}catch(e){return[];}}
+async function getAllUsers(){try{return await sbFetch('users?select=email,name&order=created_at.asc');}catch(e){return[];}}
 async function submitCorrection(email,recordId,type,oldTime,requestedTime,reason){
   await sbInsert('corrections',{id:genId(),email,record_id:recordId,type,old_time:oldTime,requested_time:requestedTime,reason,status:'pending',admin_note:'',created_at:new Date().toISOString()});
 }
-async function getCorrections(email){return sbFetch('corrections?email=eq.'+encodeURIComponent(email)+'&order=created_at.desc');}
-async function getAllCorrections(){return sbFetch('corrections?order=created_at.desc');}
+async function getCorrections(email){try{return await sbFetch('corrections?email=eq.'+encodeURIComponent(email)+'&order=created_at.desc');}catch(e){return[];}}
+async function getAllCorrections(){try{return await sbFetch('corrections?order=created_at.desc');}catch(e){return[];}}
 async function approveCorrection(id,recordId,requestedTime){
   await sbUpdate('corrections','id=eq.'+id,{status:'approved'});
   await sbUpdate('attendance','id=eq.'+recordId,{timestamp:requestedTime,corrected:true});
@@ -206,14 +224,14 @@ async function rejectCorrection(id,note){await sbUpdate('corrections','id=eq.'+i
 async function submitReservation(email,type,scheduledTime,reason){
   await sbInsert('reservations',{id:genId(),email,type,scheduled_time:scheduledTime,reason,status:'registered',created_at:new Date().toISOString()});
 }
-async function getReservations(email){return sbFetch('reservations?email=eq.'+encodeURIComponent(email)+'&order=scheduled_time.desc');}
-async function getAllReservations(){return sbFetch('reservations?order=scheduled_time.asc');}
-async function confirmReservation(id){await sbUpdate('reservations','id=eq.'+id,{status:'confirmed'});}
+async function getReservations(email){try{return await sbFetch('reservations?email=eq.'+encodeURIComponent(email)+'&order=scheduled_time.asc');}catch(e){return[];}}
+async function deleteReservation(id){return sbFetch('reservations?id=eq.'+id,'DELETE');}
+async function getAllReservations(){try{return await sbFetch('reservations?order=created_at.desc');}catch(e){return[];}}
 async function submitLeaveRequest(email,type,date,reason){
   await sbInsert('leave_requests',{id:genId(),email,type,date,reason,status:'pending',admin_note:'',created_at:new Date().toISOString()});
 }
-async function getLeaveRequests(email){return sbFetch('leave_requests?email=eq.'+encodeURIComponent(email)+'&order=date.desc');}
-async function getAllLeaveRequests(){return sbFetch('leave_requests?order=created_at.desc');}
+async function getLeaveRequests(email){try{return await sbFetch('leave_requests?email=eq.'+encodeURIComponent(email)+'&order=date.desc');}catch(e){return[];}}
+async function getAllLeaveRequests(){try{return await sbFetch('leave_requests?order=created_at.desc');}catch(e){return[];}}
 async function approveLeave(id){await sbUpdate('leave_requests','id=eq.'+id,{status:'approved'});}
 async function rejectLeave(id,note){await sbUpdate('leave_requests','id=eq.'+id,{status:'rejected',admin_note:note||''});}
 
@@ -224,8 +242,7 @@ const TERMS_HTML=`
 <h4>第3条（修正依頼）</h4><p>利用者は自身の打刻内容に誤りがある場合、修正を依頼できます。修正は管理者が承認した時点で反映されます。</p>
 <h4>第4条（取得する情報）</h4><p>本アプリは、利用者の氏名・メールアドレス・パスワード（登録情報）、出勤・退勤の打刻時刻、および打刻ボタン押下時に取得される位置情報を取得します。</p>
 <h4>第5条（免責事項）</h4><p>通信状況により、正確な情報が取得できない場合があります。これによる不利益について当社は責任を負わないものとします。</p>
-<h4>第6条（本規約について）</h4><p>本文書は運用開始にあたっての社内向けドラフトです。実運用にあたっては、個人情報保護法・労働基準法等の関連法令に照らし、社会保険労務士・弁護士等の確認を受けたうえで正式な規程として整備してください。</p>
-`;
+<h4>第6条（本規約について）</h4><p>本文書は運用開始にあたっての社内向けドラフトです。実運用にあたっては、個人情報保護法・労働基準法等の関連法令に照らし、社会保険労務士・弁護士等の確認を受けたうえで正式な規程として整備してください。</p>`;
 
 /* ===== 状態 ===== */
 let state={view:'login',currentUser:null,isAdmin:false,adminExpandedUser:null,adminTab:'users',userTab:'punch',correctionModal:null,viewMonth:new Date()};
@@ -234,9 +251,9 @@ const root=document.getElementById('root');
 
 function render(){
   if(clockTimer){clearInterval(clockTimer);clockTimer=null;}
-  if(state.view==='login') root.innerHTML=renderAuth();
-  else if(state.view==='user') root.innerHTML=renderUserShell();
-  else if(state.view==='admin') root.innerHTML=renderAdminShell();
+  if(state.view==='login')root.innerHTML=renderAuth();
+  else if(state.view==='user')root.innerHTML=renderUserShell();
+  else if(state.view==='admin')root.innerHTML=renderAdminShell();
   attachHandlers();
   renderOfflineBar();
 }
@@ -280,7 +297,6 @@ function renderAdminShell(){return`
     <div class="tabs">
       <div class="tab ${state.adminTab==='users'?'active':''}" data-atab="users">ユーザー</div>
       <div class="tab ${state.adminTab==='corrections'?'active':''}" data-atab="corrections">修正依頼</div>
-      <div class="tab ${state.adminTab==='reservations'?'active':''}" data-atab="reservations">予約</div>
       <div class="tab ${state.adminTab==='leave'?'active':''}" data-atab="leave">有給・欠勤</div>
     </div>
     <div id="adminTabBody">読み込み中...</div>
@@ -292,7 +308,7 @@ function attachHandlers(){
   if(state.view==='login'){
     document.querySelectorAll('[data-authtab]').forEach(el=>el.addEventListener('click',()=>{authTab=el.getAttribute('data-authtab');render();}));
     const loginBtn=document.getElementById('loginBtn');
-    if(loginBtn) loginBtn.addEventListener('click',async()=>{
+    if(loginBtn)loginBtn.addEventListener('click',async()=>{
       const email=document.getElementById('loginEmail').value.trim();
       const pass=document.getElementById('loginPass').value;
       if(!email||!pass){showAuthErr('入力してください。');return;}
@@ -303,15 +319,15 @@ function attachHandlers(){
       else{state.view='user';state.currentUser=r.user;state.userTab='punch';saveSession(r.user);render();mountUserTab();}
     });
     const regBtn=document.getElementById('registerBtn');
-    if(regBtn) regBtn.addEventListener('click',async()=>{
+    if(regBtn)regBtn.addEventListener('click',async()=>{
       const name=document.getElementById('regName').value.trim();
       const email=document.getElementById('regEmail').value.trim();
       const p1=document.getElementById('regPass').value;
-      const p2=document.getElementById('regPass2').value;
+      const p2v=document.getElementById('regPass2').value;
       const agree=document.getElementById('agreeCheck').checked;
       const showErr=msg=>{let eb=document.getElementById('authErrorBox');if(!eb){eb=document.createElement('div');eb.id='authErrorBox';eb.className='error-box';document.getElementById('registerBtn').after(eb);}eb.textContent=msg;};
       if(!name||!email||!p1){showErr('すべての項目を入力してください。');return;}
-      if(p1!==p2){showErr('パスワードが一致しません。');return;}
+      if(p1!==p2v){showErr('パスワードが一致しません。');return;}
       if(!agree){showErr('利用規約への同意が必要です。');return;}
       regBtn.disabled=true;regBtn.textContent='登録中...';
       const r=await registerUser(name,email,p1);
@@ -320,7 +336,7 @@ function attachHandlers(){
       else{authTab='login';render();showToast('登録が完了しました。ログインしてください。');}
     });
     const adminBtn=document.getElementById('adminLoginBtn');
-    if(adminBtn) adminBtn.addEventListener('click',()=>{
+    if(adminBtn)adminBtn.addEventListener('click',()=>{
       const pass=document.getElementById('adminPass').value;
       if(pass===ADMIN_PASSCODE){state.view='admin';state.isAdmin=true;render();mountAdminTab();startPoll();}
       else showAuthErr('パスコードが違います。');
@@ -347,17 +363,28 @@ async function mountUserTab(){
   const email=state.currentUser.email;
 
   if(state.userTab==='punch'){
-    const records=await getAttendance(email);
+    const [records,reservations]=await Promise.all([getAttendance(email),getReservations(email)]);
     const last=records[0];const isIn=last&&last.type==='clock_in';
     const today=new Date().toDateString();
     const todays=records.filter(r=>new Date(r.timestamp).toDateString()===today).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
     const queue=queueGet().filter(q=>q.row.email===email);
+    // 今後の予約（未来のもの）
+    const upcoming=reservations.filter(r=>new Date(r.scheduled_time)>new Date()).sort((a,b)=>new Date(a.scheduled_time)-new Date(b.scheduled_time)).slice(0,3);
+    const reserveBlock=upcoming.length?`<div class="reserve-card">
+      <div class="rc-label">📅 出退勤予約</div>
+      <div class="rc-items">
+        ${upcoming.map(r=>`<div class="rc-item">
+          <span>${fmtDateTime(r.scheduled_time)}${r.reason?'　<span style="font-size:11px;opacity:.7;">'+escapeHtml(r.reason)+'</span>':''}</span>
+          <span class="rc-type ${r.type==='clock_in'?'rc-in':'rc-out'}">${r.type==='clock_in'?'出勤予定':'退勤予定'}</span>
+        </div>`).join('')}
+      </div></div>`:'';
     body.innerHTML=`
       <div class="instrument">
         <div class="clock" id="liveClock">--:--:--</div>
         <div class="date" id="liveDate">----/--/--</div>
         <div class="status ${isIn?'status-in':'status-out'}">${isIn?'現在：出勤中':'現在：退勤中 / 未出勤'}</div>
       </div>
+      ${reserveBlock}
       <div class="punch-grid">
         <button class="punch-btn punch-in" id="punchIn">出勤<span class="sub">CLOCK IN</span></button>
         <button class="punch-btn punch-out" id="punchOut">退勤<span class="sub">CLOCK OUT</span></button>
@@ -376,7 +403,7 @@ async function mountUserTab(){
       <div class="card"><h2>打刻履歴</h2>
         ${records.length?records.map(r=>`<div class="rec-row">
           <div class="rec-left"><span class="dot ${r.type==='clock_in'?'dot-in':'dot-out'}"></span>
-            <div><div>${fmtDate(r.timestamp)} ${r.type==='clock_in'?'出勤':'退勤'} ${r.corrected?'<span class="badge badge-approved">修正済</span>':''}</div></div>
+            <div>${fmtDate(r.timestamp)} ${r.type==='clock_in'?'出勤':'退勤'} ${r.corrected?'<span class="badge badge-approved">修正済</span>':''}</div>
           </div>
           <div style="display:flex;align-items:center;gap:10px;">
             <span class="rec-time">${fmtTime(r.timestamp)}</span>
@@ -399,18 +426,27 @@ async function mountUserTab(){
   }
   else if(state.userTab==='reserve'){
     const reservations=await getReservations(email);
+    const now=new Date();
+    const upcoming=reservations.filter(r=>new Date(r.scheduled_time)>now);
+    const past=reservations.filter(r=>new Date(r.scheduled_time)<=now);
     body.innerHTML=`
       <div class="card"><h2>出退勤予約の登録</h2>
         <label>種別</label><select id="resType"><option value="clock_in">出勤予約</option><option value="clock_out">退勤予約</option></select>
         <label>予定日時</label><input id="resTime" type="datetime-local">
-        <label>理由（任意）</label><textarea id="resReason" rows="2" placeholder="例：通院のため10時出勤予定"></textarea>
+        <label>メモ（任意）</label><textarea id="resReason" rows="2" placeholder="例：通院のため10時出勤予定"></textarea>
         <button class="btn btn-navy" id="resSubmit" style="width:100%;margin-top:14px;">予約を登録</button>
       </div>
-      <div class="card"><h2>登録済みの予約</h2>
-        ${reservations.length?reservations.map(r=>`<div class="rec-row">
-          <div><div>${r.type==='clock_in'?'出勤予約':'退勤予約'}：${fmtDateTime(r.scheduled_time)}</div>${r.reason?`<div class="hint">${escapeHtml(r.reason)}</div>`:''}</div>
-          <span class="badge badge-${r.status==='confirmed'?'confirmed':'pending'}">${r.status==='confirmed'?'管理者確認済み':'登録済み'}</span>
-        </div>`).join(''):'<div class="empty">予約はありません</div>'}
+      <div class="card"><h2>予約一覧</h2>
+        ${upcoming.length?`<h3 style="margin-bottom:8px;">今後の予定</h3>`+upcoming.map(r=>`<div class="rec-row">
+          <div><div><span class="badge ${r.type==='clock_in'?'badge-approved':'badge-pending'}">${r.type==='clock_in'?'出勤':'退勤'}</span>　${fmtDateTime(r.scheduled_time)}</div>
+            ${r.reason?`<div class="hint">${escapeHtml(r.reason)}</div>`:''}
+          </div>
+          <button class="btn btn-line btn-sm" data-delres="${r.id}">削除</button>
+        </div>`).join(''):''}
+        ${past.length?`<h3 style="margin:12px 0 8px;">過去の予約</h3>`+past.slice(0,5).map(r=>`<div class="rec-row" style="opacity:.6;">
+          <div><span class="badge ${r.type==='clock_in'?'badge-approved':'badge-pending'}">${r.type==='clock_in'?'出勤':'退勤'}</span>　${fmtDateTime(r.scheduled_time)}${r.reason?'　'+escapeHtml(r.reason):''}</div>
+        </div>`).join(''):''}
+        ${!upcoming.length&&!past.length?'<div class="empty">予約はありません</div>':''}
       </div>`;
     document.getElementById('resSubmit').addEventListener('click',async()=>{
       const type=document.getElementById('resType').value;
@@ -420,24 +456,24 @@ async function mountUserTab(){
       await submitReservation(email,type,new Date(time).toISOString(),reason);
       showToast('予約を登録しました');mountUserTab();
     });
+    document.querySelectorAll('[data-delres]').forEach(btn=>btn.addEventListener('click',async()=>{
+      if(!confirm('この予約を削除しますか？'))return;
+      await deleteReservation(btn.getAttribute('data-delres'));
+      showToast('削除しました');mountUserTab();
+    }));
   }
   else if(state.userTab==='leave'){
     const requests=await getLeaveRequests(email);
     body.innerHTML=`
       <div class="card"><h2>有給申請・欠勤連絡</h2>
-        <label>種別</label>
-        <select id="leaveType">
-          <option value="paid_leave">有給申請</option>
-          <option value="absence">欠勤連絡</option>
-        </select>
+        <label>種別</label><select id="leaveType"><option value="paid_leave">有給申請</option><option value="absence">欠勤連絡</option></select>
         <label>対象日</label><input id="leaveDate" type="date">
         <label>理由</label><textarea id="leaveReason" rows="3" placeholder="例：私用のため / 体調不良のため"></textarea>
         <button class="btn btn-navy" id="leaveSubmit" style="width:100%;margin-top:14px;">申請・連絡する</button>
       </div>
       <div class="card"><h2>申請・連絡の状況</h2>
         ${requests.length?requests.map(r=>`<div class="rec-row">
-          <div>
-            <div><span class="badge ${r.type==='paid_leave'?'badge-confirmed':'badge-pending'}" style="margin-right:6px;">${r.type==='paid_leave'?'有給':'欠勤'}</span>${fmtDate(r.date)}</div>
+          <div><div><span class="badge ${r.type==='paid_leave'?'badge-confirmed':'badge-pending'}" style="margin-right:6px;">${r.type==='paid_leave'?'有給':'欠勤'}</span>${r.date}</div>
             <div class="hint">理由：${escapeHtml(r.reason)}</div>
             ${r.status==='rejected'&&r.admin_note?`<div class="hint">却下理由：${escapeHtml(r.admin_note)}</div>`:''}
           </div>
@@ -450,21 +486,20 @@ async function mountUserTab(){
       const reason=document.getElementById('leaveReason').value.trim();
       if(!date||!reason){showToast('日付と理由を入力してください');return;}
       await submitLeaveRequest(email,type,date,reason);
-      showToast(type==='paid_leave'?'有給申請を送信しました':'欠勤連絡を送信しました');
-      mountUserTab();
+      showToast(type==='paid_leave'?'有給申請を送信しました':'欠勤連絡を送信しました');mountUserTab();
     });
   }
   else if(state.userTab==='kintai'){
     const vm=state.viewMonth;
     const y=vm.getFullYear(),m=vm.getMonth();
-    const records=await getAttendance(email);
-    const leaves=await getLeaveRequests(email);
+    const [records,leaves]=await Promise.all([getAttendance(email),getLeaveRequests(email)]);
     const monthRecs=records.filter(r=>{const d=new Date(r.timestamp);return d.getFullYear()===y&&d.getMonth()===m;});
     const days=new Date(y,m+1,0).getDate();
     let rows='',totalWork=0,paidDays=0,absenceDays=0;
     for(let d=1;d<=days;d++){
       const ds=y+'-'+p2(m+1)+'-'+p2(d);
-      const dayRecs=monthRecs.filter(r=>fmtDate(r.timestamp)===ds.replace(/-/g,'/'));
+      const dayStr=ds.replace(/-/g,'/');
+      const dayRecs=monthRecs.filter(r=>fmtDate(r.timestamp)===dayStr);
       const inRec=dayRecs.find(r=>r.type==='clock_in');
       const outRec=dayRecs.find(r=>r.type==='clock_out');
       const leave=leaves.find(r=>r.date===ds&&r.status==='approved');
@@ -490,7 +525,7 @@ async function mountUserTab(){
         <button id="nextMonth">&#9654;</button>
       </div>
       <div class="card" style="padding:12px;">
-        <div style="display:flex;gap:16px;margin-bottom:12px;font-size:13px;">
+        <div style="display:flex;gap:16px;margin-bottom:12px;font-size:13px;flex-wrap:wrap;">
           <span>総勤務時間：<strong>${th}h${p2(tm)}m</strong></span>
           <span>有給：<strong>${paidDays}日</strong></span>
           <span>欠勤：<strong>${absenceDays}日</strong></span>
@@ -506,7 +541,7 @@ async function doPunch(type){
   const btn=document.getElementById(type==='clock_in'?'punchIn':'punchOut');
   if(btn)btn.disabled=true;
   const rec=await punch(state.currentUser.email,type);
-  if(navigator.onLine) showToast((type==='clock_in'?'出勤':'退勤')+'を記録しました　'+fmtTime(rec.timestamp));
+  if(navigator.onLine)showToast((type==='clock_in'?'出勤':'退勤')+'を記録しました　'+fmtTime(rec.timestamp));
   mountUserTab();
 }
 
@@ -558,9 +593,7 @@ function startPoll(){stopPoll();pollTimer=setInterval(()=>{if(state.view==='admi
 function stopPoll(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
 
 async function mountAdminTab(){
-  const body=document.getElementById('adminTabBody');
-  if(!body)return;
-
+  const body=document.getElementById('adminTabBody');if(!body)return;
   if(state.adminTab==='users'){
     const users=await getAllUsers();
     let expanded='';
@@ -568,7 +601,7 @@ async function mountAdminTab(){
       const u=users.find(x=>x.email===state.adminExpandedUser);
       if(u){
         const records=await sbFetch('attendance?email=eq.'+encodeURIComponent(u.email)+'&order=timestamp.desc');
-        expanded=`<div class="card"><h3>${escapeHtml(u.name)}（${escapeHtml(u.email)}）の打刻詳細（GPS含む）</h3>
+        expanded=`<div class="card"><h3>${escapeHtml(u.name)}（${escapeHtml(u.email)}）の打刻詳細</h3>
           <table><thead><tr><th>種別</th><th>日時</th><th>GPS座標</th><th>精度</th><th>地図</th></tr></thead><tbody>
           ${records.length?records.map(r=>`<tr>
             <td>${r.type==='clock_in'?'出勤':'退勤'}${r.corrected?' ✎':''}</td>
@@ -615,30 +648,12 @@ async function mountAdminTab(){
       await rejectCorrection(btn.getAttribute('data-reject'),note);showToast('却下しました');mountAdminTab();
     }));
   }
-  else if(state.adminTab==='reservations'){
-    const [users,reservations]=await Promise.all([getAllUsers(),getAllReservations()]);
-    const um=Object.fromEntries(users.map(u=>[u.email,u.name]));
-    body.innerHTML=`<div class="card"><h2>出退勤予約一覧</h2>
-      ${reservations.length?reservations.map(r=>`<div class="rec-row">
-        <div><div><strong>${escapeHtml(um[r.email]||r.email)}</strong>　${r.type==='clock_in'?'出勤予約':'退勤予約'}：${fmtDateTime(r.scheduled_time)}</div>
-          ${r.reason?`<div class="hint">${escapeHtml(r.reason)}</div>`:''}
-        </div>
-        <div style="text-align:right;">
-          <span class="badge badge-${r.status==='confirmed'?'confirmed':'pending'}">${r.status==='confirmed'?'確認済み':'未確認'}</span>
-          ${r.status!=='confirmed'?`<div style="margin-top:6px;"><button class="btn btn-line btn-sm" data-confirmres="${r.id}">確認済みにする</button></div>`:''}
-        </div></div>`).join(''):'<div class="empty">予約はありません</div>'}
-    </div>`;
-    document.querySelectorAll('[data-confirmres]').forEach(btn=>btn.addEventListener('click',async()=>{
-      await confirmReservation(btn.getAttribute('data-confirmres'));mountAdminTab();
-    }));
-  }
   else if(state.adminTab==='leave'){
     const [users,requests]=await Promise.all([getAllUsers(),getAllLeaveRequests()]);
     const um=Object.fromEntries(users.map(u=>[u.email,u.name]));
     body.innerHTML=`<div class="card"><h2>有給申請・欠勤連絡 一覧</h2>
       ${requests.length?requests.map(r=>`<div class="rec-row" style="align-items:flex-start;">
-        <div>
-          <div><strong>${escapeHtml(um[r.email]||r.email)}</strong>　<span class="badge ${r.type==='paid_leave'?'badge-confirmed':'badge-pending'}">${r.type==='paid_leave'?'有給':'欠勤'}</span>　${r.date}</div>
+        <div><div><strong>${escapeHtml(um[r.email]||r.email)}</strong>　<span class="badge ${r.type==='paid_leave'?'badge-confirmed':'badge-pending'}">${r.type==='paid_leave'?'有給':'欠勤'}</span>　${r.date}</div>
           <div class="hint">理由：${escapeHtml(r.reason)}</div>
           ${r.status==='rejected'&&r.admin_note?`<div class="hint">却下：${escapeHtml(r.admin_note)}</div>`:''}
         </div>
