@@ -227,6 +227,23 @@ async function submitReservation(email,type,scheduledTime,reason){
 async function getReservations(email){try{return await sbFetch('reservations?email=eq.'+encodeURIComponent(email)+'&order=scheduled_time.asc');}catch(e){return[];}}
 async function deleteReservation(id){return sbFetch('reservations?id=eq.'+id,'DELETE');}
 async function getAllReservations(){try{return await sbFetch('reservations?order=created_at.desc');}catch(e){return[];}}
+
+/* ===== 予約自動打刻チェック ===== */
+async function checkAndFireReservations(email){
+  const now=new Date();
+  const reservations=await getReservations(email);
+  const pending=reservations.filter(r=>r.status==='registered'&&new Date(r.scheduled_time)<=now);
+  for(const r of pending){
+    // 予約由来フラグ付きで打刻
+    const gps=null; // 予約打刻はGPS不要
+    const row={id:genId(),email,type:r.type,timestamp:r.scheduled_time,gps_lat:null,gps_lng:null,gps_accuracy:null,corrected:false,from_reservation:true};
+    try{
+      await sbInsert('attendance',row);
+      await sbUpdate('reservations','id=eq.'+r.id,{status:'fired'});
+    }catch(e){}
+  }
+  return pending.length;
+}
 async function submitLeaveRequest(email,type,date,reason){
   await sbInsert('leave_requests',{id:genId(),email,type,date,reason,status:'pending',admin_note:'',created_at:new Date().toISOString()});
 }
@@ -298,6 +315,7 @@ function renderAdminShell(){return`
       <div class="tab ${state.adminTab==='users'?'active':''}" data-atab="users">ユーザー</div>
       <div class="tab ${state.adminTab==='corrections'?'active':''}" data-atab="corrections">修正依頼</div>
       <div class="tab ${state.adminTab==='leave'?'active':''}" data-atab="leave">有給・欠勤</div>
+      <div class="tab ${state.adminTab==='kintai'?'active':''}" data-atab="kintai">出勤簿</div>
     </div>
     <div id="adminTabBody">読み込み中...</div>
   </div>`;}
@@ -673,6 +691,110 @@ async function mountAdminTab(){
       await rejectLeave(btn.getAttribute('data-rleave'),note);showToast('却下しました');mountAdminTab();
     }));
   }
+  else if(state.adminTab==='kintai'){
+    if(!state.viewMonth)state.viewMonth=new Date();
+    mountAdminKintai();
+  }
+}
+
+/* ===== 予約自動打刻 ===== */
+async function autoProcessReservations(email){
+  const reservations=await getReservations(email);
+  const now=new Date();
+  const pending=reservations.filter(r=>!r.processed&&new Date(r.scheduled_time)<=now);
+  for(const r of pending){
+    try{
+      const gps=await getGPS();
+      const row={id:genId(),email,type:r.type,timestamp:r.scheduled_time,gps_lat:gps?gps.lat:null,gps_lng:gps?gps.lng:null,gps_accuracy:gps?gps.accuracy:null,corrected:false,from_reservation:true};
+      await sbInsert('attendance',row);
+      await sbUpdate('reservations','id=eq.'+r.id,{processed:true});
+      showToast((r.type==='clock_in'?'出勤':'退勤')+'予約を自動打刻しました　'+fmtTime(r.scheduled_time));
+    }catch(e){console.error(e);}
+  }
+}
+
+/* ===== 管理者カレンダー・Excel ===== */
+async function mountAdminKintai(){
+  const body=document.getElementById('adminTabBody');if(!body)return;
+  const vm=state.viewMonth||new Date();
+  const y=vm.getFullYear(),m=vm.getMonth();
+  const [users,allRecords,allLeaves]=await Promise.all([
+    getAllUsers(),
+    sbFetch('attendance?order=timestamp.desc&limit=5000'),
+    sbFetch('leave_requests?status=eq.approved&order=date.asc')
+  ]);
+  const days=new Date(y,m+1,0).getDate();
+
+  let html=`<div class="month-nav">
+    <button id="prevMonthA">&#9664;</button>
+    <span>${y}年${m+1}月</span>
+    <button id="nextMonthA">&#9654;</button>
+    <button class="btn btn-green btn-sm" id="exportExcel" style="margin-left:auto;">Excel出力</button>
+  </div>`;
+
+  for(const u of users){
+    const recs=allRecords.filter(r=>r.email===u.email&&(()=>{const d=new Date(r.timestamp);return d.getFullYear()===y&&d.getMonth()===m;})());
+    const leaves=allLeaves.filter(r=>r.email===u.email);
+    let rows='',totalWork=0;
+    for(let d=1;d<=days;d++){
+      const ds=y+'-'+p2(m+1)+'-'+p2(d);
+      const dayStr=ds.replace(/-/g,'/');
+      const dayRecs=recs.filter(r=>fmtDate(r.timestamp)===dayStr);
+      const inRec=dayRecs.find(r=>r.type==='clock_in');
+      const outRec=dayRecs.find(r=>r.type==='clock_out');
+      const leave=leaves.find(r=>r.date===ds);
+      let workMin=null;
+      if(inRec&&outRec){workMin=Math.round((new Date(outRec.timestamp)-new Date(inRec.timestamp))/60000);totalWork+=workMin;}
+      const wd=new Date(y,m,d).getDay();
+      const wdStr=['日','月','火','水','木','金','土'][wd];
+      const weekend=wd===0||wd===6;
+      rows+=`<tr style="${weekend?'color:var(--ink-soft);':''}">
+        <td>${d}(${wdStr})</td>
+        <td>${inRec?fmtTime(inRec.timestamp)+(inRec.from_reservation?'<span class="badge badge-confirmed" style="margin-left:4px;font-size:10px;">予約</span>':''):leave?'—':''}</td>
+        <td>${outRec?fmtTime(outRec.timestamp)+(outRec.from_reservation?'<span class="badge badge-confirmed" style="margin-left:4px;font-size:10px;">予約</span>':''):leave?'—':''}</td>
+        <td>${workMin!=null?Math.floor(workMin/60)+'h'+p2(workMin%60)+'m':leave?`<span class="badge ${leave.type==='paid_leave'?'badge-confirmed':'badge-rejected'}">${leave.type==='paid_leave'?'有給':'欠勤'}</span>`:''}</td>
+      </tr>`;
+    }
+    const th=Math.floor(totalWork/60),tm2=totalWork%60;
+    html+=`<div class="card" style="padding:12px;margin-bottom:12px;">
+      <h3 style="margin-bottom:6px;">${escapeHtml(u.name)}<span class="hint" style="font-weight:400;margin-left:8px;">${escapeHtml(u.email)}</span><span style="float:right;font-size:12px;color:var(--ink-soft);">総勤務 ${th}h${p2(tm2)}m</span></h3>
+      <table><thead><tr><th>日</th><th>出勤</th><th>退勤</th><th>時間</th></tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
+  }
+  body.innerHTML=html;
+  document.getElementById('prevMonthA').addEventListener('click',()=>{state.viewMonth=new Date(y,m-1,1);mountAdminKintai();});
+  document.getElementById('nextMonthA').addEventListener('click',()=>{state.viewMonth=new Date(y,m+1,1);mountAdminKintai();});
+  document.getElementById('exportExcel').addEventListener('click',()=>exportExcel(users,allRecords,allLeaves,y,m));
+}
+
+function exportExcel(users,allRecords,allLeaves,y,m){
+  const days=new Date(y,m+1,0).getDate();
+  const BOM='\uFEFF';
+  let csv=BOM+'氏名,日付,曜日,出勤,退勤,勤務時間,備考\n';
+  const wdStr=['日','月','火','水','木','金','土'];
+  for(const u of users){
+    const recs=allRecords.filter(r=>r.email===u.email&&(()=>{const d=new Date(r.timestamp);return d.getFullYear()===y&&d.getMonth()===m;})());
+    const leaves=allLeaves.filter(r=>r.email===u.email);
+    for(let d=1;d<=days;d++){
+      const ds=y+'-'+p2(m+1)+'-'+p2(d);
+      const dayStr=ds.replace(/-/g,'/');
+      const dayRecs=recs.filter(r=>fmtDate(r.timestamp)===dayStr);
+      const inRec=dayRecs.find(r=>r.type==='clock_in');
+      const outRec=dayRecs.find(r=>r.type==='clock_out');
+      const leave=leaves.find(r=>r.date===ds);
+      let workStr='',note='';
+      if(inRec&&outRec){const wm=Math.round((new Date(outRec.timestamp)-new Date(inRec.timestamp))/60000);workStr=Math.floor(wm/60)+'h'+p2(wm%60)+'m';}
+      if(inRec?.from_reservation||outRec?.from_reservation)note='予約打刻';
+      if(leave)note=leave.type==='paid_leave'?'有給':'欠勤';
+      const wd=new Date(y,m,d).getDay();
+      csv+=`"${u.name}","${dayStr}","${wdStr[wd]}","${inRec?fmtTime(inRec.timestamp):''}","${outRec?fmtTime(outRec.timestamp):''}","${workStr}","${note}"\n`;
+    }
+  }
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`出勤簿_${y}年${m+1}月.csv`;
+  a.click();
 }
 
 /* ===== セッション ===== */
@@ -685,6 +807,7 @@ if(saved){state.view='user';state.currentUser=saved;}
 render();
 if(saved)mountUserTab();
 if(navigator.onLine)syncQueue();
+if(saved&&navigator.onLine)autoProcessReservations(saved.email);
 </script>
 </body>
 </html>
