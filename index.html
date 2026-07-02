@@ -529,7 +529,8 @@ async function mountUserTab(){
     const today=new Date().toDateString();
     const todays=records.filter(r=>new Date(r.timestamp).toDateString()===today).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
     const queue=queueGet().filter(q=>q.row.email===email);
-    const upcoming=reservations.filter(r=>!r.processed&&new Date(r.scheduled_time)>new Date()).slice(0,3);
+    const today2=new Date();today2.setHours(0,0,0,0);
+    const upcoming=reservations.filter(r=>!r.processed&&new Date(r.scheduled_time)>=today2).sort((a,b)=>new Date(a.scheduled_time)-new Date(b.scheduled_time)).slice(0,5);
     // 退勤忘れ検知
     let forgotWarn='';
     const lastIn=records.find(r=>r.type==='clock_in');
@@ -615,7 +616,7 @@ async function mountUserTab(){
       <div class="card"><h2>出退勤予約の登録</h2>
         <label>種別</label><select id="resType"><option value="clock_in">出勤予約</option><option value="clock_out">退勤予約</option></select>
         <label>予定日時</label><input id="resTime" type="datetime-local">
-        <label>メモ（任意）</label><textarea id="resReason" rows="2" placeholder="例：通院のため10時出勤予定"></textarea>
+        <label>理由（必須）</label><textarea id="resReason" rows="2" placeholder="例：通院のため"></textarea>
         <button class="btn btn-navy" id="resSubmit" style="width:100%;margin-top:14px;">予約を登録</button>
       </div>
       <div class="card"><h2>予約一覧</h2>
@@ -632,7 +633,7 @@ async function mountUserTab(){
       const type=document.getElementById('resType').value;
       const time=document.getElementById('resTime').value;
       const reason=document.getElementById('resReason').value.trim();
-      if(!time){showToast('予定日時を入力してください');return;}
+      if(!time||!reason){showToast('日時と理由を入力してください');return;}
       await submitReservation(email,type,new Date(time).toISOString(),reason);
       await autoProcessReservations(email);
       showToast('予約を登録しました');mountUserTab();
@@ -679,7 +680,10 @@ async function mountUserTab(){
             <div class="hint">理由：${escapeHtml(r.reason)}</div>
             ${r.status==='rejected'&&r.admin_note?`<div class="hint">却下理由：${escapeHtml(r.admin_note)}</div>`:''}
           </div>
-          <span class="badge badge-${r.status==='pending'?'pending':r.status==='approved'?'approved':'rejected'}">${r.status==='pending'?'審査中':r.status==='approved'?'承認':'却下'}</span>
+          <div style="text-align:right;">
+            <span class="badge badge-${r.status==='pending'?'pending':r.status==='approved'?'approved':r.status==='cancel_pending'?'pending':'rejected'}">${r.status==='pending'?'審査中':r.status==='approved'?'承認':r.status==='cancel_pending'?'取消申請中':'却下'}</span>
+            ${r.status==='approved'?`<div style="margin-top:6px;"><button class="btn btn-red btn-sm" data-cancelleave="${r.id}">取り消し申請</button></div>`:''}
+          </div>
         </div>`).join(''):'<div class="empty">申請・連絡はありません</div>'}
       </div>
       <div class="card"><h2>今月の休暇（全員）</h2>
@@ -693,6 +697,11 @@ async function mountUserTab(){
       await submitLeaveRequest(email,type,date,reason);
       showToast('送信しました');mountUserTab();
     });
+    document.querySelectorAll('[data-cancelleave]').forEach(btn=>btn.addEventListener('click',async()=>{
+      if(!confirm('取り消しを申請しますか？管理者が承認すると取り消されます。'))return;
+      await sbUpdate('leave_requests','id=eq.'+btn.getAttribute('data-cancelleave'),{status:'cancel_pending'});
+      showToast('取り消し申請を送信しました');mountUserTab();
+    }));
   }
   else if(state.userTab==='kintai'){
     await loadHolidays();
@@ -955,10 +964,13 @@ async function mountAdminTab(){
           ${r.status==='rejected'&&r.admin_note?`<div class="hint">却下：${escapeHtml(r.admin_note)}</div>`:''}
         </div>
         <div style="text-align:right;">
-          <span class="badge badge-${r.status==='pending'?'pending':r.status==='approved'?'approved':'rejected'}">${r.status==='pending'?'審査中':r.status==='approved'?'承認済':'却下'}</span>
+          <span class="badge badge-${r.status==='pending'?'pending':r.status==='approved'?'approved':r.status==='cancel_pending'?'pending':'rejected'}">${r.status==='pending'?'審査中':r.status==='approved'?'承認済':r.status==='cancel_pending'?'取消申請中':'却下'}</span>
           ${r.status==='pending'?`<div style="margin-top:8px;display:flex;gap:6px;">
             <button class="btn btn-green btn-sm" data-aleave="${r.id}">承認</button>
             <button class="btn btn-line btn-sm" data-rleave="${r.id}">却下</button>
+          </div>`:r.status==='cancel_pending'?`<div style="margin-top:8px;display:flex;gap:6px;">
+            <button class="btn btn-amber btn-sm" data-cancelapprove="${r.id}">取消承認</button>
+            <button class="btn btn-line btn-sm" data-cancelreject="${r.id}">取消却下</button>
           </div>`:''}
         </div></div>`).join(''):'<div class="empty">申請・連絡はありません</div>'}
     </div>`;
@@ -968,6 +980,15 @@ async function mountAdminTab(){
     document.querySelectorAll('[data-rleave]').forEach(btn=>btn.addEventListener('click',async()=>{
       const note=prompt('却下理由（任意）')||'';
       await rejectLeave(btn.getAttribute('data-rleave'),note);showToast('却下しました');mountAdminTab();
+    }));
+    document.querySelectorAll('[data-cancelapprove]').forEach(btn=>btn.addEventListener('click',async()=>{
+      await sbUpdate('leave_requests','id=eq.'+btn.getAttribute('data-cancelapprove'),{status:'cancelled'});
+      logAudit('admin','cancel_leave',btn.getAttribute('data-cancelapprove'),'');
+      showToast('取り消しを承認しました');mountAdminTab();
+    }));
+    document.querySelectorAll('[data-cancelreject]').forEach(btn=>btn.addEventListener('click',async()=>{
+      await sbUpdate('leave_requests','id=eq.'+btn.getAttribute('data-cancelreject'),{status:'approved'});
+      showToast('取り消しを却下しました（承認済みに戻しました）');mountAdminTab();
     }));
   }
   else if(state.adminTab==='kintai'){
@@ -1128,7 +1149,10 @@ async function mountAdminSettings(){
   body.innerHTML=`
     <div class="card"><h2>現場管理</h2>
       ${sites.map(s=>`<div class="rec-row"><div>${escapeHtml(s.name)}${s.active?'':' <span class="badge badge-rejected">無効</span>'}</div>
-        <button class="btn ${s.active?'btn-red':'btn-green'} btn-sm" data-togglesite="${s.id}|${s.active?'0':'1'}">${s.active?'無効化':'有効化'}</button></div>`).join('')||'<div class="empty">現場未登録</div>'}
+        <div style="display:flex;gap:6px;">
+          <button class="btn ${s.active?'btn-red':'btn-green'} btn-sm" data-togglesite="${s.id}|${s.active?'0':'1'}">${s.active?'無効化':'有効化'}</button>
+          <button class="btn btn-red btn-sm" data-deletesite="${s.id}">削除</button>
+        </div></div>`).join('')||'<div class="empty">現場未登録</div>'}
       <div style="display:flex;gap:8px;margin-top:12px;">
         <input id="newSiteName" placeholder="新しい現場名">
         <button class="btn btn-navy" id="addSite" style="white-space:nowrap;">追加</button>
@@ -1186,6 +1210,11 @@ async function mountAdminSettings(){
     const [id,to]=btn.getAttribute('data-togglesite').split('|');
     await sbUpdate('sites','id=eq.'+id,{active:to==='1'});
     mountAdminSettings();
+  }));
+  document.querySelectorAll('[data-deletesite]').forEach(btn=>btn.addEventListener('click',async()=>{
+    if(!confirm('この現場を削除しますか？'))return;
+    await sbFetch('sites?id=eq.'+btn.getAttribute('data-deletesite'),'DELETE');
+    showToast('削除しました');mountAdminSettings();
   }));
   document.getElementById('addBreak').addEventListener('click',()=>{
     const ed=document.getElementById('breakTimesEditor');
