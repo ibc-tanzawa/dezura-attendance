@@ -165,11 +165,41 @@ function toggleDark(){document.body.classList.toggle('dark');localStorage.setIte
 /* ===== Supabase ===== */
 const SB_URL='https://fzgvrropxbsxoffukhax.supabase.co';
 const SB_KEY='sb_publishable_aGGnCru9be1hgd7L5-RWQg_bYdaIiNR';
-const ADMIN_PASSCODE='K7mP2xQn9R';
+/* ===== 認証（Supabase Auth） ===== */
+const AUTH_KEY='dezura_auth';
+function authGet(){try{return JSON.parse(localStorage.getItem(AUTH_KEY)||'null');}catch(e){return null;}}
+function authSave(a){localStorage.setItem(AUTH_KEY,JSON.stringify(a));}
+function authClear(){localStorage.removeItem(AUTH_KEY);}
+async function authLogin(email,password){
+  const r=await fetch(SB_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'Content-Type':'application/json','apikey':SB_KEY},body:JSON.stringify({email,password})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)return{error:'メールアドレスまたはパスワードが違います。'};
+  authSave({at:d.access_token,rt:d.refresh_token,exp:Date.now()+(d.expires_in-60)*1000});
+  return{ok:true};
+}
+async function authRefresh(){
+  const a=authGet();if(!a||!a.rt)return null;
+  try{
+    const r=await fetch(SB_URL+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{'Content-Type':'application/json','apikey':SB_KEY},body:JSON.stringify({refresh_token:a.rt})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){authClear();return null;}
+    authSave({at:d.access_token,rt:d.refresh_token,exp:Date.now()+(d.expires_in-60)*1000});
+    return d.access_token;
+  }catch(e){return a.at;/* オフライン時は既存トークンで続行 */}
+}
+async function getToken(){
+  const a=authGet();if(!a)return null;
+  if(Date.now()<a.exp)return a.at;
+  return await authRefresh();
+}
+function forceLogout(){authClear();clearSession();state.view='login';state.currentUser=null;state.isAdmin=false;try{stopPoll();}catch(e){}render();}
 async function sbFetch(path,method='GET',body=null,extraHeaders={}){
-  const opts={method,headers:Object.assign({'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY},extraHeaders)};
+  const tk=await getToken();
+  if(!tk){forceLogout();throw new Error('ログインが必要です。');}
+  const opts={method,headers:Object.assign({'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+tk},extraHeaders)};
   if(body)opts.body=JSON.stringify(body);
   const r=await fetch(SB_URL+'/rest/v1/'+path,opts);
+  if(r.status===401){forceLogout();throw new Error('セッションの有効期限が切れました。再ログインしてください。');}
   if(!r.ok){const e=await r.text();throw new Error(e);}
   const t=await r.text();return t?JSON.parse(t):[];
 }
@@ -297,21 +327,18 @@ function calcDayStats(dayRecs,breakTimes){
 }
 
 /* ===== API ===== */
-async function registerUser(name,email,password){
-  try{
-    const ex=await sbFetch('users?email=eq.'+encodeURIComponent(email)+'&select=email');
-    if(ex.length>0)return{error:'このメールアドレスは既に登録されています。'};
-    await sbInsert('users',{email,name,pass:password,created_at:new Date().toISOString()});
-    return{ok:true};
-  }catch(e){return{error:'登録エラー: '+e.message};}
-}
 async function loginUser(email,password){
+  const a=await authLogin(email,password);
+  if(a.error)return{error:a.error};
   try{
-    const rows=await sbFetch('users?email=eq.'+encodeURIComponent(email)+'&pass=eq.'+encodeURIComponent(password)+'&select=email,name,disabled');
-    if(!rows.length)return{error:'メールアドレスまたはパスワードが違います。'};
-    if(rows[0].disabled)return{error:'このアカウントは無効化されています。管理者にお問い合わせください。'};
-    return{ok:true,user:{email:rows[0].email,name:rows[0].name}};
-  }catch(e){return{error:'ログインエラー: '+e.message};}
+    let rows=await sbFetch('users?email=eq.'+encodeURIComponent(email)+'&select=email,name,disabled,is_admin');
+    if(!rows.length){
+      await sbInsert('users',{email,name:email.split('@')[0],pass:'(supabase-auth)',created_at:new Date().toISOString()});
+      rows=await sbFetch('users?email=eq.'+encodeURIComponent(email)+'&select=email,name,disabled,is_admin');
+    }
+    if(rows[0].disabled){authClear();return{error:'このアカウントは無効化されています。管理者にお問い合わせください。'};}
+    return{ok:true,user:{email:rows[0].email,name:rows[0].name,isAdmin:!!rows[0].is_admin}};
+  }catch(e){authClear();return{error:'ログインエラー: '+e.message};}
 }
 async function punch(email,type,site){
   const needGps=(type==='clock_in'||type==='clock_out');
@@ -401,14 +428,11 @@ function renderAuth(){return`<div class="center-screen"><div class="card auth-ca
   <div style="text-align:center;margin-bottom:18px;"><div class="brand" style="justify-content:center;color:var(--navy);"><div class="mark">でずら！</div><h1 style="font-size:20px;color:var(--ink);">勤怠管理</h1></div></div>
   <div class="auth-tabs">
     <div class="auth-tab ${authTab==='login'?'active':''}" data-authtab="login">ログイン</div>
-    <div class="auth-tab ${authTab==='register'?'active':''}" data-authtab="register">新規登録</div>
     <div class="auth-tab ${authTab==='admin'?'active':''}" data-authtab="admin">管理者</div>
   </div>
   ${authTab==='login'?`<label>メールアドレス</label><input id="loginEmail" type="email" placeholder="you@example.com"><label>パスワード</label><input id="loginPass" type="password" placeholder="パスワード"><button class="btn btn-navy" id="loginBtn" style="width:100%;margin-top:16px;">ログイン</button>`:
-    authTab==='register'?`<label>氏名</label><input id="regName" type="text" placeholder="山田 太郎"><label>メールアドレス</label><input id="regEmail" type="email" placeholder="you@example.com"><label>パスワード</label><input id="regPass" type="password" placeholder="8文字以上推奨"><label>パスワード（確認）</label><input id="regPass2" type="password" placeholder="もう一度入力"><button class="btn btn-green" id="registerBtn" style="width:100%;margin-top:16px;">登録する</button>`:
-    `<label>管理者パスコード</label><input id="adminPass" type="password" placeholder="パスコードを入力"><button class="btn btn-navy" id="adminLoginBtn" style="width:100%;margin-top:16px;">管理者としてログイン</button>`}
-  ${authTab==='register'?`<div class="checkline" style="justify-content:center;"><input type="checkbox" id="agreeCheck"><label style="margin:0;font-weight:400;color:var(--ink-soft);font-size:12px;">利用にあたり <a id="openTermsLink" style="color:var(--navy);font-weight:700;cursor:pointer;">利用規約</a> に同意します</label></div>`:
-    `<div class="footer-link">利用にあたり <a id="openTermsLink">利用規約</a> をご確認ください</div>`}
+    `<label>メールアドレス</label><input id="adminEmail" type="email" placeholder="admin@example.com"><label>パスワード</label><input id="adminPass" type="password" placeholder="パスワード"><button class="btn btn-navy" id="adminLoginBtn" style="width:100%;margin-top:16px;">管理者としてログイン</button>`}
+  <div class="footer-link">アカウントの発行は管理者にご依頼ください。利用にあたり <a id="openTermsLink">利用規約</a> をご確認ください</div>
 </div></div>`;}
 
 function renderUserShell(){return`
@@ -476,37 +500,34 @@ function attachHandlers(){
       }
       else{failSave({n:0,until:0});state.view='user';state.currentUser=r.user;state.userTab='punch';saveSession(r.user);render();mountUserTab();autoProcessReservations(r.user.email);}
     });
-    const regBtn=document.getElementById('registerBtn');
-    if(regBtn)regBtn.addEventListener('click',async()=>{
-      const name=document.getElementById('regName').value.trim();
-      const email=document.getElementById('regEmail').value.trim();
-      const p1=document.getElementById('regPass').value;
-      const p2v=document.getElementById('regPass2').value;
-      const agree=document.getElementById('agreeCheck').checked;
-      const showErr=msg=>{let eb=document.getElementById('authErrorBox');if(!eb){eb=document.createElement('div');eb.id='authErrorBox';eb.className='error-box';document.getElementById('registerBtn').after(eb);}eb.textContent=msg;};
-      if(!name||!email||!p1){showErr('すべての項目を入力してください。');return;}
-      if(p1!==p2v){showErr('パスワードが一致しません。');return;}
-      if(!agree){showErr('利用規約への同意が必要です。');return;}
-      regBtn.disabled=true;regBtn.textContent='登録中...';
-      const r=await registerUser(name,email,p1);
-      regBtn.disabled=false;regBtn.textContent='登録する';
-      if(r.error)showErr(r.error);
-      else{authTab='login';render();showToast('登録が完了しました。ログインしてください。');}
-    });
     const adminBtn=document.getElementById('adminLoginBtn');
-    if(adminBtn)adminBtn.addEventListener('click',()=>{
+    if(adminBtn)adminBtn.addEventListener('click',async()=>{
+      const f=failGet();
+      if(f.until>Date.now()){showAuthErr('試行回数超過。'+Math.ceil((f.until-Date.now())/1000)+'秒後に再試行してください。');return;}
+      const email=document.getElementById('adminEmail').value.trim();
       const pass=document.getElementById('adminPass').value;
-      if(pass===ADMIN_PASSCODE){state.view='admin';state.isAdmin=true;state.adminTab='presence';render();startPoll();}
-      else showAuthErr('パスコードが違います。');
+      if(!email||!pass){showAuthErr('入力してください。');return;}
+      adminBtn.disabled=true;adminBtn.textContent='確認中...';
+      const r=await loginUser(email,pass);
+      adminBtn.disabled=false;adminBtn.textContent='管理者としてログイン';
+      if(r.error){
+        const nf={n:f.n+1,until:0};
+        if(nf.n>=5){nf.until=Date.now()+60000;nf.n=0;}
+        failSave(nf);
+        showAuthErr(r.error);return;
+      }
+      if(!r.user.isAdmin){authClear();showAuthErr('このアカウントには管理者権限がありません。');return;}
+      failSave({n:0,until:0});
+      state.view='admin';state.isAdmin=true;state.adminTab='presence';state.currentUser=r.user;render();startPoll();
     });
   }
   if(state.view==='user'){
-    document.getElementById('logoutBtn').addEventListener('click',()=>{stopPoll();clearSession();state.view='login';state.currentUser=null;render();});
+    document.getElementById('logoutBtn').addEventListener('click',()=>{stopPoll();clearSession();authClear();state.view='login';state.currentUser=null;render();});
     document.querySelectorAll('[data-utab]').forEach(el=>el.addEventListener('click',()=>{state.userTab=el.getAttribute('data-utab');state.histLimit=30;render();mountUserTab();}));
     mountUserTab();
   }
   if(state.view==='admin'){
-    document.getElementById('adminLogoutBtn').addEventListener('click',()=>{stopPoll();state.view='login';state.isAdmin=false;render();});
+    document.getElementById('adminLogoutBtn').addEventListener('click',()=>{stopPoll();clearSession();authClear();state.view='login';state.isAdmin=false;state.currentUser=null;render();});
     document.getElementById('adminRefreshBtn').addEventListener('click',()=>mountAdminTab());
     document.querySelectorAll('[data-atab]').forEach(el=>el.addEventListener('click',()=>{state.adminTab=el.getAttribute('data-atab');render();}));
     mountAdminTab();
@@ -1266,11 +1287,12 @@ function loadSession(){
   }catch(e){return null;}
 }
 
-const saved=loadSession();
+const saved=(authGet()?loadSession():null);
+if(!authGet())clearSession();
 if(saved){state.view='user';state.currentUser=saved;}
 render();
 if(saved){mountUserTab();if(navigator.onLine)autoProcessReservations(saved.email);}
-if(navigator.onLine)syncQueue();
+if(navigator.onLine&&authGet())syncQueue();
 </script>
 </body>
 </html>
