@@ -749,6 +749,7 @@ async function mountUserTab(){
       const wdStr=['日','月','火','水','木','金','土'][wd];
       const holiday=holidayMap[ds];
       const weekend=wd===0||wd===6;
+      const dayColor=holiday?'color:#1a8f3c;font-weight:700;':wd===0?'color:#d43c3c;font-weight:700;':wd===6?'color:#2b6fd4;font-weight:700;':'';
       const dayDate=new Date(y,m,d);
       const miss=dayDate<todayStart&&!leave&&((s.inRec&&!s.outRec)||(!s.inRec&&s.outRec));
       // 遅刻早退
@@ -763,7 +764,7 @@ async function mountUserTab(){
       if(miss)notes.push('打刻漏れ');
       if(holiday)notes.push(holiday);
       rows+=`<tr class="${miss?'row-miss':holiday?'row-holiday':''}" style="${weekend&&!holiday&&!miss?'color:var(--ink-soft);':''}">
-        <td>${d}（${wdStr}）</td>
+        <td style="${dayColor}">${d}（${wdStr}）</td>
         <td>${s.inRec?fmtTime(s.inRec.timestamp):leave?'—':''}</td>
         <td>${s.outRec?fmtTime(s.outRec.timestamp):leave?'—':''}</td>
         <td>${s.brMin>0?fmtMin(s.brMin):''}</td>
@@ -1064,6 +1065,7 @@ async function mountAdminKintai(){
       const wdStr=['日','月','火','水','木','金','土'][wd];
       const holiday=holidayMap[ds];
       const weekend=wd===0||wd===6;
+      const dayColor=holiday?'color:#1a8f3c;font-weight:700;':wd===0?'color:#d43c3c;font-weight:700;':wd===6?'color:#2b6fd4;font-weight:700;':'';
       const dayDate=new Date(y,m,d);
       const miss=dayDate<todayStart&&!leave&&((s.inRec&&!s.outRec)||(!s.inRec&&s.outRec));
       let lateEarly='';
@@ -1078,7 +1080,7 @@ async function mountAdminKintai(){
       if(miss)notes.push('打刻漏れ');
       if(holiday)notes.push(holiday);
       rows+=`<tr class="${miss?'row-miss':holiday?'row-holiday':''}" style="${weekend&&!holiday&&!miss?'color:var(--ink-soft);':''}">
-        <td>${d}(${wdStr})</td>
+        <td style="${dayColor}">${d}(${wdStr})</td>
         <td>${s.inRec?fmtTime(s.inRec.timestamp):leave?'—':''}</td>
         <td>${s.outRec?fmtTime(s.outRec.timestamp):leave?'—':''}</td>
         <td>${s.brMin>0?fmtMin(s.brMin):''}</td>
