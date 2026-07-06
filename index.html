@@ -359,9 +359,10 @@ async function submitCorrection(email,recordId,type,oldTime,requestedTime,reason
 }
 async function getCorrections(email){try{return await sbFetch('corrections?email=eq.'+encodeURIComponent(email)+'&order=created_at.desc');}catch(e){return[];}}
 async function getAllCorrections(){try{return await sbFetch('corrections?order=created_at.desc');}catch(e){return[];}}
-async function approveCorrection(id,recordId,requestedTime){
+async function approveCorrection(id,recordId,requestedTime,email,type){
   await sbUpdate('corrections','id=eq.'+id,{status:'approved'});
-  await sbUpdate('attendance','id=eq.'+recordId,{timestamp:requestedTime,corrected:true});
+  if(recordId){await sbUpdate('attendance','id=eq.'+recordId,{timestamp:requestedTime,corrected:true});}
+  else{await sbInsert('attendance',{id:genId(),email,type,timestamp:requestedTime,gps_lat:null,gps_lng:null,gps_accuracy:null,corrected:true,deleted:false,site:null});}
   logAudit('admin','approve_corr',id,'');
 }
 async function rejectCorrection(id,note){await sbUpdate('corrections','id=eq.'+id,{status:'rejected',admin_note:note||''});logAudit('admin','reject_corr',id,note||'');}
@@ -443,8 +444,7 @@ function renderUserShell(){return`
   <div class="wrap">
     <div class="tabs">
       <div class="tab ${state.userTab==='punch'?'active':''}" data-utab="punch">打刻</div>
-      <div class="tab ${state.userTab==='history'?'active':''}" data-utab="history">履歴・修正</div>
-      <div class="tab ${state.userTab==='reserve'?'active':''}" data-utab="reserve">予約</div>
+      <div class="tab ${state.userTab==='history'?'active':''}" data-utab="history">打刻忘れ・修正</div>
       <div class="tab ${state.userTab==='leave'?'active':''}" data-utab="leave">有給・欠勤</div>
       <div class="tab ${state.userTab==='kintai'?'active':''}" data-utab="kintai">出勤簿</div>
       <div class="tab" id="openTermsLink3">規約</div>
@@ -498,7 +498,7 @@ function attachHandlers(){
         failSave(nf);
         showAuthErr(r.error);
       }
-      else{failSave({n:0,until:0});state.view='user';state.currentUser=r.user;state.userTab='punch';saveSession(r.user);render();mountUserTab();autoProcessReservations(r.user.email);}
+      else{failSave({n:0,until:0});state.view='user';state.currentUser=r.user;state.userTab='punch';saveSession(r.user);render();mountUserTab();}
     });
     const adminBtn=document.getElementById('adminLoginBtn');
     if(adminBtn)adminBtn.addEventListener('click',async()=>{
@@ -542,7 +542,7 @@ async function mountUserTab(){
   const email=state.currentUser.email;
 
   if(state.userTab==='punch'){
-    const [records,reservations,sites]=await Promise.all([getAttendance(email),getReservations(email),getSites()]);
+    const [records,sites]=await Promise.all([getAttendance(email),getSites()]);
     const last=records[0];
     const st=last?last.type:null;
     const statusText=st==='clock_in'?'現在：出勤中':'現在：退勤中 / 未出勤';
@@ -550,17 +550,13 @@ async function mountUserTab(){
     const today=new Date().toDateString();
     const todays=records.filter(r=>new Date(r.timestamp).toDateString()===today).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
     const queue=queueGet().filter(q=>q.row.email===email);
-    const today2=new Date();today2.setHours(0,0,0,0);
-    const upcoming=reservations.filter(r=>!r.processed&&new Date(r.scheduled_time)>=today2).sort((a,b)=>new Date(a.scheduled_time)-new Date(b.scheduled_time)).slice(0,5);
     // 退勤忘れ検知
     let forgotWarn='';
     const lastIn=records.find(r=>r.type==='clock_in');
     if(st==='clock_in'&&lastIn&&(Date.now()-new Date(lastIn.timestamp))>12*3600000){
       forgotWarn=`<div class="warn-box">⚠ 出勤から12時間以上経過しています。退勤打刻を忘れていませんか？</div>`;
     }
-    const reserveBlock=upcoming.length?`<div class="reserve-card"><div class="rc-label">📅 出退勤予約</div>
-      ${upcoming.map(r=>`<div class="rc-item"><span>${fmtDateTime(r.scheduled_time)}${r.reason?' <span style="font-size:11px;opacity:.7;">'+escapeHtml(r.reason)+'</span>':''}</span><span class="rc-type ${r.type==='clock_in'?'rc-in':'rc-out'}">${r.type==='clock_in'?'出勤予定':'退勤予定'}</span></div>`).join('')}
-      </div>`:'';
+    const reserveBlock='';
     const siteSel=sites.length?`<label>現場（任意）</label><select id="siteSel"><option value="">選択なし</option>${sites.map(s=>`<option value="${escapeHtml(s.name)}" ${localStorage.getItem('dezura_last_site')===s.name?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select><div style="height:12px;"></div>`:'';
     body.innerHTML=`
       ${forgotWarn}
@@ -587,6 +583,13 @@ async function mountUserTab(){
     const [records,corrections,closings]=await Promise.all([getAttendance(email),getCorrections(email),getClosings()]);
     const shown=records.slice(0,state.histLimit);
     body.innerHTML=`
+      <div class="card"><h2>打刻忘れの申請</h2>
+        <div class="hint">打刻を忘れた場合、日時を指定して申請できます。管理者の承認後に記録されます。</div>
+        <label>種別</label><select id="npType"><option value="clock_in">出勤</option><option value="clock_out">退勤</option></select>
+        <label>日時</label><input id="npTime" type="datetime-local">
+        <label>理由（必須）</label><textarea id="npReason" rows="2" placeholder="例：打刻を忘れました。実際は8:00出勤です"></textarea>
+        <button class="btn btn-navy" id="npSubmit" style="width:100%;margin-top:14px;">申請する</button>
+      </div>
       <div class="card"><h2>打刻履歴</h2>
         ${shown.length?shown.map(r=>{
           const ym=r.timestamp.slice(0,7);
@@ -609,13 +612,21 @@ async function mountUserTab(){
       </div>
       <div class="card"><h2>修正依頼の状況</h2>
         ${corrections.length?corrections.map(c=>`<div class="rec-row">
-          <div><div>${typeLabel(c.type)}：${fmtDateTime(c.old_time)} → ${fmtDateTime(c.requested_time)}</div>
+          <div><div>${typeLabel(c.type)}：${c.old_time?fmtDateTime(c.old_time)+' → ':'<span class="badge badge-confirmed">新規</span> '}${fmtDateTime(c.requested_time)}</div>
             <div class="hint">理由：${escapeHtml(c.reason)}</div>
             ${c.status==='rejected'&&c.admin_note?`<div class="hint">却下理由：${escapeHtml(c.admin_note)}</div>`:''}
           </div>
           <span class="badge badge-${c.status==='pending'?'pending':c.status==='approved'?'approved':'rejected'}">${c.status==='pending'?'審査中':c.status==='approved'?'承認済み':'却下'}</span>
         </div>`).join(''):'<div class="empty">修正依頼はありません</div>'}
       </div>`;
+    document.getElementById('npSubmit').addEventListener('click',async()=>{
+      const type=document.getElementById('npType').value;
+      const time=document.getElementById('npTime').value;
+      const reason=document.getElementById('npReason').value.trim();
+      if(!time||!reason){showToast('日時と理由を入力してください');return;}
+      await sbInsert('corrections',{id:genId(),email,record_id:null,type,old_time:null,requested_time:new Date(time).toISOString(),reason,status:'pending',admin_note:'',created_at:new Date().toISOString()});
+      showToast('申請しました。管理者の承認をお待ちください');mountUserTab();
+    });
     document.querySelectorAll('[data-fixrec]').forEach(btn=>btn.addEventListener('click',()=>{
       state.correctionModal={recordId:btn.getAttribute('data-fixrec'),type:btn.getAttribute('data-fixtype'),oldTime:btn.getAttribute('data-fixtime')};
       openCorrectionModal();
@@ -627,43 +638,6 @@ async function mountUserTab(){
     }));
     const lm=document.getElementById('loadMore');
     if(lm)lm.addEventListener('click',()=>{state.histLimit+=30;mountUserTab();});
-  }
-  else if(state.userTab==='reserve'){
-    const reservations=await getReservations(email);
-    const now=new Date();
-    const upcoming=reservations.filter(r=>new Date(r.scheduled_time)>now);
-    const past=reservations.filter(r=>new Date(r.scheduled_time)<=now).sort((a,b)=>new Date(b.scheduled_time)-new Date(a.scheduled_time));
-    body.innerHTML=`
-      <div class="card"><h2>出退勤予約の登録</h2>
-        <label>種別</label><select id="resType"><option value="clock_in">出勤予約</option><option value="clock_out">退勤予約</option></select>
-        <label>予定日時</label><input id="resTime" type="datetime-local">
-        <label>理由（必須）</label><textarea id="resReason" rows="2" placeholder="例：通院のため"></textarea>
-        <button class="btn btn-navy" id="resSubmit" style="width:100%;margin-top:14px;">予約を登録</button>
-      </div>
-      <div class="card"><h2>予約一覧</h2>
-        ${upcoming.length?`<h3 style="margin-bottom:8px;">今後の予定</h3>`+upcoming.map(r=>`<div class="rec-row">
-          <div><div><span class="badge ${r.type==='clock_in'?'badge-approved':'badge-pending'}">${typeLabel(r.type)}</span> ${fmtDateTime(r.scheduled_time)}</div>${r.reason?`<div class="hint">${escapeHtml(r.reason)}</div>`:''}</div>
-          <button class="btn btn-line btn-sm" data-delres="${r.id}">削除</button>
-        </div>`).join(''):''}
-        ${past.length?`<h3 style="margin:12px 0 8px;">過去の予約</h3>`+past.slice(0,5).map(r=>`<div class="rec-row" style="opacity:.6;">
-          <div><span class="badge ${r.type==='clock_in'?'badge-approved':'badge-pending'}">${typeLabel(r.type)}</span> ${fmtDateTime(r.scheduled_time)}${r.reason?' '+escapeHtml(r.reason):''} ${r.processed?'<span class="badge badge-confirmed">打刻済</span>':''}</div>
-        </div>`).join(''):''}
-        ${!upcoming.length&&!past.length?'<div class="empty">予約はありません</div>':''}
-      </div>`;
-    document.getElementById('resSubmit').addEventListener('click',async()=>{
-      const type=document.getElementById('resType').value;
-      const time=document.getElementById('resTime').value;
-      const reason=document.getElementById('resReason').value.trim();
-      if(!time||!reason){showToast('日時と理由を入力してください');return;}
-      await submitReservation(email,type,new Date(time).toISOString(),reason);
-      await autoProcessReservations(email);
-      showToast('予約を登録しました');mountUserTab();
-    });
-    document.querySelectorAll('[data-delres]').forEach(btn=>btn.addEventListener('click',async()=>{
-      if(!confirm('この予約を削除しますか？'))return;
-      await deleteReservation(btn.getAttribute('data-delres'));
-      showToast('削除しました');mountUserTab();
-    }));
   }
   else if(state.userTab==='leave'){
     const [requests,users,allApproved]=await Promise.all([getLeaveRequests(email),getAllUsers(),getApprovedLeaves()]);
@@ -796,6 +770,7 @@ async function mountUserTab(){
 }
 
 async function doPunch(type){
+  if(type==='clock_out'){execPunch(type,null);return;}
   document.getElementById('punchTimeModalBg')?.remove();
   const bg=document.createElement('div');bg.className='modal-bg';bg.id='punchTimeModalBg';
   const now=new Date();const hh=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
@@ -977,21 +952,21 @@ async function mountAdminTab(){
     body.innerHTML=`<div class="card"><h2>修正依頼一覧</h2>
       ${corrections.length?corrections.map(c=>`<div class="rec-row" style="align-items:flex-start;">
         <div><div><strong>${escapeHtml(um[c.email]||c.email)}</strong> ${typeLabel(c.type)}</div>
-          <div class="hint">${fmtDateTime(c.old_time)} → ${fmtDateTime(c.requested_time)}</div>
+          <div class="hint">${c.old_time?fmtDateTime(c.old_time)+' → ':'（新規打刻申請）'}${fmtDateTime(c.requested_time)}</div>
           <div class="hint">理由：${escapeHtml(c.reason)}</div>
           ${c.status==='rejected'&&c.admin_note?`<div class="hint">却下：${escapeHtml(c.admin_note)}</div>`:''}
         </div>
         <div style="text-align:right;">
           <span class="badge badge-${c.status==='pending'?'pending':c.status==='approved'?'approved':'rejected'}">${c.status==='pending'?'審査中':c.status==='approved'?'承認済':'却下'}</span>
           ${c.status==='pending'?`<div style="margin-top:8px;display:flex;gap:6px;">
-            <button class="btn btn-green btn-sm" data-approve="${c.id}|${c.record_id}|${c.requested_time}">承認</button>
+            <button class="btn btn-green btn-sm" data-approve="${c.id}|${c.record_id||''}|${c.requested_time}|${c.email}|${c.type}">承認</button>
             <button class="btn btn-line btn-sm" data-reject="${c.id}">却下</button>
           </div>`:''}
         </div></div>`).join(''):'<div class="empty">修正依頼はありません</div>'}
     </div>`;
     document.querySelectorAll('[data-approve]').forEach(btn=>btn.addEventListener('click',async()=>{
-      const [id,recId,reqTime]=btn.getAttribute('data-approve').split('|');
-      await approveCorrection(id,recId,reqTime);showToast('承認しました');mountAdminTab();
+      const [id,recId,reqTime,cEmail,cType]=btn.getAttribute('data-approve').split('|');
+      await approveCorrection(id,recId||null,reqTime,cEmail,cType);showToast('承認しました');mountAdminTab();
     }));
     document.querySelectorAll('[data-reject]').forEach(btn=>btn.addEventListener('click',async()=>{
       const note=prompt('却下理由（任意）')||'';
@@ -1315,7 +1290,7 @@ const saved=(authGet()?loadSession():null);
 if(!authGet())clearSession();
 if(saved){state.view='user';state.currentUser=saved;}
 render();
-if(saved){mountUserTab();if(navigator.onLine)autoProcessReservations(saved.email);}
+if(saved)mountUserTab();
 if(navigator.onLine&&authGet())syncQueue();
 </script>
 </body>
