@@ -290,7 +290,7 @@ function calcFixedBreakMin(inRec,outRec,breakTimes){
   if(!inRec||!outRec)return 0;
   const inT=new Date(inRec.timestamp);
   const outT=new Date(outRec.timestamp);
-  const date=inT.toISOString().slice(0,10);
+  const date=inT.getFullYear()+'-'+p2(inT.getMonth()+1)+'-'+p2(inT.getDate());
   let total=0;
   for(const b of breakTimes){
     const bs=new Date(date+'T'+b.start+':00');
