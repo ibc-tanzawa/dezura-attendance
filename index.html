@@ -749,8 +749,6 @@ async function mountUserTab(){
       if(wsStd&&s.inRec&&fmtTime(s.inRec.timestamp)>wsStd)lateEarly+='遅刻 ';
       if(weStd&&s.outRec&&fmtTime(s.outRec.timestamp)<weStd)lateEarly+='早退 ';
       const notes=[];
-      if(s.overMin>0)notes.push('残業'+fmtMin(s.overMin));
-      if(s.nightMin>0)notes.push('深夜'+fmtMin(s.nightMin));
       if(lateEarly)notes.push(lateEarly.trim());
       if(s.inRec&&s.inRec.site)notes.push('@'+s.inRec.site);
       if(miss)notes.push('打刻漏れ');
@@ -761,6 +759,8 @@ async function mountUserTab(){
         <td>${s.outRec?fmtTime(s.outRec.timestamp):leave?'—':''}</td>
         <td>${s.brMin>0?fmtMin(s.brMin):''}</td>
         <td>${s.workMin!=null?fmtMin(s.workMin):leave?`<span class="badge ${leave.type.startsWith('paid_leave')?'badge-confirmed':'badge-rejected'}">${leaveLabel(leave.type)}</span>`:''}</td>
+        <td>${s.overMin>0?fmtMin(s.overMin):''}</td>
+        <td>${s.nightMin>0?fmtMin(s.nightMin):''}</td>
         <td style="font-size:10.5px;">${notes.join(' ')}</td>
       </tr>`;
     }
@@ -780,7 +780,7 @@ async function mountUserTab(){
           <span>有給：<strong>${paidDays}日</strong></span>
           <span>欠勤：<strong>${absenceDays}日</strong></span>
         </div>
-        <table><thead><tr><th>日</th><th>出勤</th><th>退勤</th><th>休憩</th><th>実働</th><th>備考</th></tr></thead><tbody>${rows}</tbody></table>
+        <table><thead><tr><th>日</th><th>出勤</th><th>退勤</th><th>休憩</th><th>実働</th><th>残業</th><th>深夜残業</th><th>備考</th></tr></thead><tbody>${rows}</tbody></table>
       </div>`;
     document.getElementById('prevMonth').addEventListener('click',()=>{state.viewMonth=new Date(y,m-1,1);mountUserTab();});
     document.getElementById('nextMonth').addEventListener('click',()=>{state.viewMonth=new Date(y,m+1,1);mountUserTab();});
@@ -1104,8 +1104,6 @@ async function mountAdminKintai(){
       if(wsStd&&s.inRec&&fmtTime(s.inRec.timestamp)>wsStd)lateEarly+='遅刻 ';
       if(weStd&&s.outRec&&fmtTime(s.outRec.timestamp)<weStd)lateEarly+='早退 ';
       const notes=[];
-      if(s.overMin>0)notes.push('残'+fmtMin(s.overMin));
-      if(s.nightMin>0)notes.push('深'+fmtMin(s.nightMin));
       if(lateEarly)notes.push(lateEarly.trim());
       if(s.inRec&&s.inRec.site)notes.push('@'+s.inRec.site);
       if(s.inRec&&s.inRec.from_reservation)notes.push('予約');
@@ -1117,6 +1115,8 @@ async function mountAdminKintai(){
         <td>${s.outRec?fmtTime(s.outRec.timestamp):leave?'—':''}</td>
         <td>${s.brMin>0?fmtMin(s.brMin):''}</td>
         <td>${s.workMin!=null?fmtMin(s.workMin):leave?`<span class="badge ${leave.type.startsWith('paid_leave')?'badge-confirmed':'badge-rejected'}">${leaveLabel(leave.type)}</span>`:''}</td>
+        <td>${s.overMin>0?fmtMin(s.overMin):''}</td>
+        <td>${s.nightMin>0?fmtMin(s.nightMin):''}</td>
         <td style="font-size:10px;">${notes.join(' ')}</td>
         <td>${closed?'':dayRecs.map(r=>`<button class="btn btn-red btn-sm" style="margin:1px;padding:3px 6px;font-size:10px;" data-admdelatt="${r.id}">${typeLabel(r.type).slice(0,1)}${fmtTime(r.timestamp)}</button>`).join('')}</td>
       </tr>`;
@@ -1124,7 +1124,7 @@ async function mountAdminKintai(){
     html+=`<div class="card" style="padding:12px;margin-bottom:12px;">
       <h3 style="margin-bottom:6px;">${escapeHtml(u.name)}<span class="hint" style="font-weight:400;margin-left:8px;">${escapeHtml(u.email)}</span>
         <span style="float:right;font-size:11.5px;color:var(--ink-soft);">実働${fmtMin(totalWork)}｜<span style="${totalOver>2700?'color:var(--red);font-weight:700;':''}">残業${fmtMin(totalOver)}</span>｜深夜${fmtMin(totalNight)}</span></h3>
-      <table><thead><tr><th>日</th><th>出</th><th>退</th><th>休憩</th><th>実働</th><th>備考</th><th>削除</th></tr></thead><tbody>${rows}</tbody></table>
+      <table><thead><tr><th>日</th><th>出</th><th>退</th><th>休憩</th><th>実働</th><th>残業</th><th>深夜</th><th>備考</th><th>削除</th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
   }
   body.innerHTML=html;
