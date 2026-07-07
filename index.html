@@ -878,7 +878,7 @@ function openTermsModal(){
 }
 
 /* ===== 管理者 ===== */
-function startPoll(){stopPoll();pollTimer=setInterval(()=>{if(state.view==='admin')mountAdminTab();},15000);}
+function startPoll(){stopPoll();pollTimer=setInterval(()=>{if(state.view==='admin'&&state.adminTab==='presence')mountAdminTab();},15000);}
 function stopPoll(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
 
 async function mountAdminTab(){
