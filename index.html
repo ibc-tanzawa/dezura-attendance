@@ -647,11 +647,14 @@ async function mountUserTab(){
     const brTotal=bts.reduce((a,b)=>a+Math.max(0,toMin(b.end)-toMin(b.start)),0);
     const workMin=Math.max(0,toMin(we)-toMin(ws)-brTotal);
     const fmtM=m=>Math.floor(m/60)+'時間'+(m%60?m%60+'分':'');
+    const autoText=`当社の就業時間は ${ws}〜${we} です。
+休憩時間は ${bts.map(b=>b.start+'〜'+b.end).join('、')}（計${fmtM(brTotal)}）で、出退勤時刻から自動的に差し引かれます。
+所定労働時間は 1日${fmtM(workMin)} です。
+
+出勤打刻は定時（${ws}）が基本です。${ws}より前に出社した場合でも、会社が指示した早出でない限り勤務時間には含まれません。承認された早出勤務の場合のみ、打刻時に時刻を指定してください。`;
+    const hoursText=settings.hours_text||autoText;
     body.innerHTML=`<div class="card"><h2>勤務時間について</h2>
-      <p style="line-height:1.9;">当社の就業時間は <strong>${ws}〜${we}</strong> です。<br>
-      休憩時間は ${bts.map(b=>b.start+'〜'+b.end).join('、')}（計${fmtM(brTotal)}）で、出退勤時刻から自動的に差し引かれます。<br>
-      所定労働時間は <strong>1日${fmtM(workMin)}</strong> です。</p>
-      <p style="line-height:1.9;" class="hint">出勤打刻は定時（${ws}）が基本です。${ws}より前に出社した場合でも、会社が指示した早出でない限り勤務時間には含まれません。承認された早出勤務の場合のみ、打刻時に時刻を指定してください。</p>
+      <p style="line-height:1.9;white-space:pre-wrap;">${escapeHtml(hoursText)}</p>
     </div>`;
   }
   else if(state.userTab==='leave'){
@@ -1203,6 +1206,14 @@ async function mountAdminSettings(){
         <button class="btn btn-navy" id="addSite" style="white-space:nowrap;">追加</button>
       </div>
     </div>
+    <div class="card"><h2>勤務時間の説明文（社員画面「勤務時間」タブ）</h2>
+      <div class="hint">空欄の場合は設定値から自動生成された文章が表示されます。</div>
+      <textarea id="setHoursText" rows="8" style="width:100%;margin-top:8px;">${escapeHtml(settings.hours_text||'')}</textarea>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button class="btn btn-navy" id="saveHoursText">保存</button>
+        <button class="btn btn-line" id="clearHoursText">自動生成に戻す</button>
+      </div>
+    </div>
     <div class="card"><h2>標準休憩時間</h2>
       <div class="hint">出退勤時刻から自動で差し引かれます。最大3枠まで設定できます。</div>
       <div id="breakTimesEditor">
@@ -1276,6 +1287,15 @@ async function mountAdminSettings(){
     showToast('休憩時間を保存しました');
   });
   document.querySelectorAll('[data-rmbreak]').forEach(btn=>btn.addEventListener('click',()=>btn.parentElement.remove()));
+  document.getElementById('saveHoursText').addEventListener('click',async()=>{
+    await saveSetting('hours_text',document.getElementById('setHoursText').value.trim());
+    showToast('説明文を保存しました');
+  });
+  document.getElementById('clearHoursText').addEventListener('click',async()=>{
+    await saveSetting('hours_text','');
+    document.getElementById('setHoursText').value='';
+    showToast('自動生成に戻しました');
+  });
   document.getElementById('saveHours').addEventListener('click',async()=>{
     await saveSetting('work_start',document.getElementById('setWorkStart').value);
     await saveSetting('work_end',document.getElementById('setWorkEnd').value);
