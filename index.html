@@ -795,38 +795,44 @@ async function doPunch(type){
   const bg=document.createElement('div');bg.className='modal-bg';bg.id='punchTimeModalBg';
   const now=new Date();const hh=p2(now.getHours())+':'+p2(now.getMinutes());
   const beforeStart=hh<=ws;
-  bg.innerHTML=`<div class="modal"><h2>${typeLabel(type)}の打刻時刻</h2>
-    ${beforeStart?`<button class="btn btn-navy" id="ptStd" style="width:100%;margin-top:8px;">定時で打刻（${ws}）</button>`:
-    `<button class="btn btn-navy" id="ptNow" style="width:100%;margin-top:8px;">現在時刻で打刻（${hh}）</button>`}
-    <div class="hint" style="text-align:center;margin:12px 0 4px;">${beforeStart?'承認された早出の場合のみ時刻を指定':'または時刻を指定（本日）'}</div>
-    <input id="ptTime" type="time" value="${hh}">
+  bg.innerHTML=`<div class="modal"><h2>出勤打刻</h2>
+    <button class="btn btn-navy" id="ptStd" style="width:100%;margin-top:8px;">${beforeStart?`定時で打刻（${ws}）`:`現在時刻で打刻（${hh}）`}</button>
+    <div class="hint" style="margin:16px 0 4px;font-weight:700;">早出の場合（管理者の承認が必要です）</div>
+    <label>出勤時刻</label><input id="ptTime" type="time" value="${hh}">
+    <label>理由（必須）</label><input id="ptReason" type="text" placeholder="例：現場準備のため">
     <div style="display:flex;gap:10px;margin-top:16px;">
       <button class="btn btn-line" id="ptCancel" style="flex:1;">キャンセル</button>
-      <button class="btn btn-green" id="ptSubmit" style="flex:1;">指定時刻で打刻</button>
+      <button class="btn btn-green" id="ptSubmit" style="flex:1;">早出で打刻</button>
     </div></div>`;
   document.body.appendChild(bg);
   document.getElementById('ptCancel').addEventListener('click',()=>bg.remove());
-  const ptNow=document.getElementById('ptNow');
-  if(ptNow)ptNow.addEventListener('click',()=>{bg.remove();execPunch(type,null);});
-  const ptStd=document.getElementById('ptStd');
-  if(ptStd)ptStd.addEventListener('click',()=>{
-    const d=new Date();const[h,mi]=ws.split(':');d.setHours(+h,+mi,0,0);
-    bg.remove();execPunch(type,d.toISOString());
+  document.getElementById('ptStd').addEventListener('click',()=>{
+    if(beforeStart){const d=new Date();const[h,mi]=ws.split(':');d.setHours(+h,+mi,0,0);bg.remove();execPunch(type,d.toISOString());}
+    else{bg.remove();execPunch(type,null);}
   });
-  document.getElementById('ptSubmit').addEventListener('click',()=>{
+  document.getElementById('ptSubmit').addEventListener('click',async()=>{
     const t=document.getElementById('ptTime').value;
-    if(!t){showToast('時刻を入力してください');return;}
-    const d=new Date();const[h,mi]=t.split(':');d.setHours(+h,+mi,0,0);
-    bg.remove();execPunch(type,d.toISOString());
+    const reason=document.getElementById('ptReason').value.trim();
+    if(!t||!reason){showToast('時刻と理由を入力してください');return;}
+    if(t>ws){showToast('早出は定時（'+ws+'）より前の時刻を指定してください');return;}
+    bg.remove();
+    const d=new Date();const[h,mi]=ws.split(':');d.setHours(+h,+mi,0,0);
+    const rec=await execPunch(type,d.toISOString(),true);
+    if(rec){
+      const rq=new Date();const[h2,m2]=t.split(':');rq.setHours(+h2,+m2,0,0);
+      await sbInsert('corrections',{id:genId(),email:state.currentUser.email,record_id:rec.id,type:'clock_in',old_time:rec.timestamp,requested_time:rq.toISOString(),reason:'【早出】'+reason,status:'pending',admin_note:'',created_at:new Date().toISOString()});
+      showToast('早出を申請しました。承認まで'+ws+'起算で集計されます');mountUserTab();
+    }
   });
 }
-async function execPunch(type,ts){
+async function execPunch(type,ts,silent){
   const btn=document.getElementById({clock_in:'punchIn',clock_out:'punchOut'}[type]);
   if(btn)btn.disabled=true;
   const siteSel=document.getElementById('siteSel');
   const site=siteSel?siteSel.value:null;
   if(site)localStorage.setItem('dezura_last_site',site);
   const rec=await punch(state.currentUser.email,type,site,ts);
+  if(silent){mountUserTab();return rec;}
   if(navigator.onLine){
     showToastAction(typeLabel(type)+'を記録しました '+fmtTime(rec.timestamp),'取消',async()=>{
       await sbFetch('attendance?id=eq.'+rec.id,'DELETE');
@@ -835,6 +841,7 @@ async function execPunch(type,ts){
     },5000);
   }
   mountUserTab();
+  return rec;
 }
 
 function tickClock(){
