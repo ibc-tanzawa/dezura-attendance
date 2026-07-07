@@ -447,7 +447,7 @@ function renderUserShell(){return`
       <div class="tab ${state.userTab==='history'?'active':''}" data-utab="history">打刻忘れ・修正</div>
       <div class="tab ${state.userTab==='leave'?'active':''}" data-utab="leave">有給・欠勤</div>
       <div class="tab ${state.userTab==='kintai'?'active':''}" data-utab="kintai">出勤簿</div>
-      <div class="tab" id="openTermsLink3">規約</div>
+      <div class="tab ${state.userTab==='hours'?'active':''}" data-utab="hours">勤務時間</div>
     </div>
     <div id="userTabBody">読み込み中...</div>
   </div>`;}
@@ -476,7 +476,7 @@ function failGet(){try{return JSON.parse(localStorage.getItem(FAIL_KEY)||'{"n":0
 function failSave(f){localStorage.setItem(FAIL_KEY,JSON.stringify(f));}
 
 function attachHandlers(){
-  ['openTermsLink','openTermsLink3'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('click',openTermsModal);});
+  ['openTermsLink'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('click',openTermsModal);});
   const darkBtn=document.getElementById('darkBtn');
   if(darkBtn)darkBtn.addEventListener('click',toggleDark);
 
@@ -639,6 +639,21 @@ async function mountUserTab(){
     const lm=document.getElementById('loadMore');
     if(lm)lm.addEventListener('click',()=>{state.histLimit+=30;mountUserTab();});
   }
+  else if(state.userTab==='hours'){
+    const settings=await getSettings();
+    const bts=parseBreakSettings(settings);
+    const ws=settings.work_start||'08:00',we=settings.work_end||'17:30';
+    const toMin=t=>{const[a,b]=t.split(':');return +a*60+ +b;};
+    const brTotal=bts.reduce((a,b)=>a+Math.max(0,toMin(b.end)-toMin(b.start)),0);
+    const workMin=Math.max(0,toMin(we)-toMin(ws)-brTotal);
+    const fmtM=m=>Math.floor(m/60)+'時間'+(m%60?m%60+'分':'');
+    body.innerHTML=`<div class="card"><h2>勤務時間について</h2>
+      <p style="line-height:1.9;">当社の就業時間は <strong>${ws}〜${we}</strong> です。<br>
+      休憩時間は ${bts.map(b=>b.start+'〜'+b.end).join('、')}（計${fmtM(brTotal)}）で、出退勤時刻から自動的に差し引かれます。<br>
+      所定労働時間は <strong>1日${fmtM(workMin)}</strong> です。</p>
+      <p style="line-height:1.9;" class="hint">出勤打刻は定時（${ws}）が基本です。${ws}より前に出社した場合でも、会社が指示した早出でない限り勤務時間には含まれません。承認された早出勤務の場合のみ、打刻時に時刻を指定してください。</p>
+    </div>`;
+  }
   else if(state.userTab==='leave'){
     const [requests,users,allApproved]=await Promise.all([getLeaveRequests(email),getAllUsers(),getApprovedLeaves()]);
     const me=users.find(u=>u.email===email)||{};
@@ -772,11 +787,15 @@ async function mountUserTab(){
 async function doPunch(type){
   if(type==='clock_out'){execPunch(type,null);return;}
   document.getElementById('punchTimeModalBg')?.remove();
+  const settings=await getSettings();
+  const ws=settings.work_start||'08:00';
   const bg=document.createElement('div');bg.className='modal-bg';bg.id='punchTimeModalBg';
-  const now=new Date();const hh=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  const now=new Date();const hh=p2(now.getHours())+':'+p2(now.getMinutes());
+  const beforeStart=hh<=ws;
   bg.innerHTML=`<div class="modal"><h2>${typeLabel(type)}の打刻時刻</h2>
-    <button class="btn btn-navy" id="ptNow" style="width:100%;margin-top:8px;">現在時刻で打刻（${hh}）</button>
-    <div class="hint" style="text-align:center;margin:12px 0 4px;">または時刻を指定（本日）</div>
+    ${beforeStart?`<button class="btn btn-navy" id="ptStd" style="width:100%;margin-top:8px;">定時で打刻（${ws}）</button>`:
+    `<button class="btn btn-navy" id="ptNow" style="width:100%;margin-top:8px;">現在時刻で打刻（${hh}）</button>`}
+    <div class="hint" style="text-align:center;margin:12px 0 4px;">${beforeStart?'承認された早出の場合のみ時刻を指定':'または時刻を指定（本日）'}</div>
     <input id="ptTime" type="time" value="${hh}">
     <div style="display:flex;gap:10px;margin-top:16px;">
       <button class="btn btn-line" id="ptCancel" style="flex:1;">キャンセル</button>
@@ -784,7 +803,13 @@ async function doPunch(type){
     </div></div>`;
   document.body.appendChild(bg);
   document.getElementById('ptCancel').addEventListener('click',()=>bg.remove());
-  document.getElementById('ptNow').addEventListener('click',()=>{bg.remove();execPunch(type,null);});
+  const ptNow=document.getElementById('ptNow');
+  if(ptNow)ptNow.addEventListener('click',()=>{bg.remove();execPunch(type,null);});
+  const ptStd=document.getElementById('ptStd');
+  if(ptStd)ptStd.addEventListener('click',()=>{
+    const d=new Date();const[h,mi]=ws.split(':');d.setHours(+h,+mi,0,0);
+    bg.remove();execPunch(type,d.toISOString());
+  });
   document.getElementById('ptSubmit').addEventListener('click',()=>{
     const t=document.getElementById('ptTime').value;
     if(!t){showToast('時刻を入力してください');return;}
