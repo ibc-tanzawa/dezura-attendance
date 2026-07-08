@@ -355,14 +355,15 @@ async function softDeleteAttendance(id,actor){
   logAudit(actor,'delete_att',id,'');
 }
 async function submitCorrection(email,recordId,type,oldTime,requestedTime,reason){
-  await sbInsert('corrections',{id:genId(),email,record_id:recordId,type,old_time:oldTime,requested_time:requestedTime,reason,status:'pending',admin_note:'',created_at:new Date().toISOString()});
+  const gps=await getGPS();
+  await sbInsert('corrections',{id:genId(),email,record_id:recordId,type,old_time:oldTime,requested_time:requestedTime,reason,status:'pending',admin_note:'',created_at:new Date().toISOString(),gps_lat:gps?gps.lat:null,gps_lng:gps?gps.lng:null,gps_accuracy:gps?gps.accuracy:null});
 }
 async function getCorrections(email){try{return await sbFetch('corrections?email=eq.'+encodeURIComponent(email)+'&order=created_at.desc');}catch(e){return[];}}
 async function getAllCorrections(){try{return await sbFetch('corrections?order=created_at.desc');}catch(e){return[];}}
-async function approveCorrection(id,recordId,requestedTime,email,type){
+async function approveCorrection(id,recordId,requestedTime,email,type,corr){
   await sbUpdate('corrections','id=eq.'+id,{status:'approved'});
   if(recordId){await sbUpdate('attendance','id=eq.'+recordId,{timestamp:requestedTime,corrected:true});}
-  else{await sbInsert('attendance',{id:genId(),email,type,timestamp:requestedTime,gps_lat:null,gps_lng:null,gps_accuracy:null,corrected:true,deleted:false,site:null});}
+  else{await sbInsert('attendance',{id:genId(),email,type,timestamp:requestedTime,gps_lat:corr?corr.gps_lat:null,gps_lng:corr?corr.gps_lng:null,gps_accuracy:corr?corr.gps_accuracy:null,corrected:true,deleted:false,site:null});}
   logAudit('admin','approve_corr',id,'');
 }
 async function rejectCorrection(id,note){await sbUpdate('corrections','id=eq.'+id,{status:'rejected',admin_note:note||''});logAudit('admin','reject_corr',id,note||'');}
@@ -624,7 +625,8 @@ async function mountUserTab(){
       const time=document.getElementById('npTime').value;
       const reason=document.getElementById('npReason').value.trim();
       if(!time||!reason){showToast('日時と理由を入力してください');return;}
-      await sbInsert('corrections',{id:genId(),email,record_id:null,type,old_time:null,requested_time:new Date(time).toISOString(),reason,status:'pending',admin_note:'',created_at:new Date().toISOString()});
+      const gps=await getGPS();
+      await sbInsert('corrections',{id:genId(),email,record_id:null,type,old_time:null,requested_time:new Date(time).toISOString(),reason,status:'pending',admin_note:'',created_at:new Date().toISOString(),gps_lat:gps?gps.lat:null,gps_lng:gps?gps.lng:null,gps_accuracy:gps?gps.accuracy:null});
       showToast('申請しました。管理者の承認をお待ちください');mountUserTab();
     });
     document.querySelectorAll('[data-fixrec]').forEach(btn=>btn.addEventListener('click',()=>{
@@ -817,7 +819,7 @@ async function doPunch(type){
     const rec=await execPunch(type,d.toISOString(),true);
     if(rec){
       const rq=new Date();const[h2,m2]=t.split(':');rq.setHours(+h2,+m2,0,0);
-      await sbInsert('corrections',{id:genId(),email:state.currentUser.email,record_id:rec.id,type:'clock_in',old_time:rec.timestamp,requested_time:rq.toISOString(),reason:'【早出】'+reason,status:'pending',admin_note:'',created_at:new Date().toISOString()});
+      await sbInsert('corrections',{id:genId(),email:state.currentUser.email,record_id:rec.id,type:'clock_in',old_time:rec.timestamp,requested_time:rq.toISOString(),reason:'【早出】'+reason,status:'pending',admin_note:'',created_at:new Date().toISOString(),gps_lat:rec.gps_lat,gps_lng:rec.gps_lng,gps_accuracy:rec.gps_accuracy});
       showToast('早出を申請しました。承認まで'+ws+'起算で集計されます');mountUserTab();
     }
   });
@@ -981,11 +983,18 @@ async function mountAdminTab(){
   else if(state.adminTab==='corrections'){
     const [users,corrections]=await Promise.all([getAllUsers(),getAllCorrections()]);
     const um=Object.fromEntries(users.map(u=>[u.email,u.name]));
+    const recIds=corrections.filter(c=>c.record_id).map(c=>c.record_id);
+    let attMap={};
+    if(recIds.length){try{const atts=await sbFetch('attendance?id=in.('+recIds.join(',')+')&select=id,gps_lat,gps_lng');attMap=Object.fromEntries(atts.map(a=>[a.id,a]));}catch(e){}}
+    const gpsLink=(lat,lng,label)=>lat!=null?`<a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" style="color:var(--navy);font-weight:700;">${label}</a>`:`<span style="color:var(--ink-soft);">${label}なし</span>`;
+    const corrGps=c=>{const o=c.record_id?attMap[c.record_id]:null;
+      return `<div class="hint">位置：${gpsLink(o?o.gps_lat:null,o?o.gps_lng:null,'打刻時')}｜${gpsLink(c.gps_lat,c.gps_lng,'申請時')}</div>`;};
     body.innerHTML=`<div class="card"><h2>修正依頼一覧</h2>
       ${corrections.length?corrections.map(c=>`<div class="rec-row" style="align-items:flex-start;">
         <div><div><strong>${escapeHtml(um[c.email]||c.email)}</strong> ${typeLabel(c.type)}</div>
           <div class="hint">${c.old_time?fmtDateTime(c.old_time)+' → ':'（新規打刻申請）'}${fmtDateTime(c.requested_time)}</div>
           <div class="hint">理由：${escapeHtml(c.reason)}</div>
+          ${corrGps(c)}
           ${c.status==='rejected'&&c.admin_note?`<div class="hint">却下：${escapeHtml(c.admin_note)}</div>`:''}
         </div>
         <div style="text-align:right;">
@@ -996,9 +1005,10 @@ async function mountAdminTab(){
           </div>`:''}
         </div></div>`).join(''):'<div class="empty">修正依頼はありません</div>'}
     </div>`;
+    const corrById=Object.fromEntries(corrections.map(c=>[c.id,c]));
     document.querySelectorAll('[data-approve]').forEach(btn=>btn.addEventListener('click',async()=>{
       const [id,recId,reqTime,cEmail,cType]=btn.getAttribute('data-approve').split('|');
-      await approveCorrection(id,recId||null,reqTime,cEmail,cType);showToast('承認しました');mountAdminTab();
+      await approveCorrection(id,recId||null,reqTime,cEmail,cType,corrById[id]);showToast('承認しました');mountAdminTab();
     }));
     document.querySelectorAll('[data-reject]').forEach(btn=>btn.addEventListener('click',async()=>{
       const note=prompt('却下理由（任意）')||'';
