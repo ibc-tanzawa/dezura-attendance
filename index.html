@@ -343,6 +343,7 @@ async function loginUser(email,password){
 async function punch(email,type,site,ts){
   const needGps=(type==='clock_in'||type==='clock_out');
   const gps=needGps?await getGPS():null;
+  if(needGps&&!gps)throw new Error('位置情報が取得できませんでした。端末とブラウザの位置情報を許可（ON）にしてから打刻してください。');
   const row={id:genId(),email,type,timestamp:ts||new Date().toISOString(),gps_lat:gps?gps.lat:null,gps_lng:gps?gps.lng:null,gps_accuracy:gps?gps.accuracy:null,corrected:false,deleted:false,site:site||null};
   if(navigator.onLine){await sbInsert('attendance',row);}
   else{queueAdd({table:'attendance',row});}
@@ -830,7 +831,9 @@ async function execPunch(type,ts,silent){
   const siteSel=document.getElementById('siteSel');
   const site=siteSel?siteSel.value:null;
   if(site)localStorage.setItem('dezura_last_site',site);
-  const rec=await punch(state.currentUser.email,type,site,ts);
+  let rec;
+  try{rec=await punch(state.currentUser.email,type,site,ts);}
+  catch(e){showToast(e.message);if(btn)btn.disabled=false;return null;}
   if(silent){mountUserTab();return rec;}
   if(navigator.onLine){
     showToastAction(typeLabel(type)+'を記録しました '+fmtTime(rec.timestamp),'取消',async()=>{
