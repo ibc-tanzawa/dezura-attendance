@@ -796,20 +796,17 @@ async function doPunch(type){
   const now=new Date();const hh=p2(now.getHours())+':'+p2(now.getMinutes());
   const beforeStart=hh<=ws;
   bg.innerHTML=`<div class="modal"><h2>出勤打刻</h2>
-    <button class="btn btn-navy" id="ptStd" style="width:100%;margin-top:8px;">定時で打刻（${ws}）</button>
+    <button class="btn btn-navy" id="ptStd" style="width:100%;margin-top:8px;">現在時刻で打刻（${hh}）</button>
     <div class="hint" style="margin:16px 0 4px;font-weight:700;">早出の場合（管理者の承認が必要です）</div>
-    <label>出勤時刻</label><input id="ptTime" type="time" value="${hh}">
-    <label>理由（必須）</label><input id="ptReason" type="text" placeholder="例：現場準備のため">
+    <label>作業開始時刻</label><input id="ptTime" type="time" value="${hh}">
+    <label>理由（必須）</label><input id="ptReason" type="text" placeholder="例：コンクリート打設7：00～のため">
     <div style="display:flex;gap:10px;margin-top:16px;">
       <button class="btn btn-line" id="ptCancel" style="flex:1;">キャンセル</button>
       <button class="btn btn-green" id="ptSubmit" style="flex:1;">早出で打刻</button>
     </div></div>`;
   document.body.appendChild(bg);
   document.getElementById('ptCancel').addEventListener('click',()=>bg.remove());
-  document.getElementById('ptStd').addEventListener('click',()=>{
-    const d=new Date();const[h,mi]=ws.split(':');d.setHours(+h,+mi,0,0);
-    bg.remove();execPunch(type,d.toISOString());
-  });
+  document.getElementById('ptStd').addEventListener('click',()=>{bg.remove();execPunch(type,null);});
   document.getElementById('ptSubmit').addEventListener('click',async()=>{
     const t=document.getElementById('ptTime').value;
     const reason=document.getElementById('ptReason').value.trim();
