@@ -311,19 +311,36 @@ function nightMinutes(s,e){
   }
   return Math.round(total);
 }
-function calcDayStats(dayRecs,breakTimes){
+function calcDayStats(dayRecs,breakTimes,ws){
   const ins=dayRecs.filter(r=>r.type==='clock_in').sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
   const outs=dayRecs.filter(r=>r.type==='clock_out').sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
   const inRec=ins[0]||null,outRec=outs[outs.length-1]||null;
-  let workMin=null,overMin=0,nightMin=0;
+  let workMin=null,overMin=0,nightMin=0,earlyMin=0;
   const brMin=calcFixedBreakMin(inRec,outRec,breakTimes||[]);
-  if(inRec&&outRec){
-    const gross=Math.round((new Date(outRec.timestamp)-new Date(inRec.timestamp))/60000);
-    workMin=Math.max(0,gross-brMin);
-    overMin=Math.max(0,workMin-480);
-    nightMin=nightMinutes(new Date(inRec.timestamp),new Date(outRec.timestamp));
+  const atTime=(base,hm)=>{const[h,mi]=hm.split(':');const d=new Date(base);d.setHours(+h,+mi,0,0);return d;};
+  if(inRec&&ws){
+    const inT=new Date(inRec.timestamp),wsT=atTime(inT,ws);
+    if(inRec.corrected&&inT<wsT)earlyMin=Math.round((wsT-inT)/60000);
   }
-  return{inRec,outRec,workMin,brMin,overMin,nightMin};
+  if(inRec&&outRec){
+    const inT=new Date(inRec.timestamp),outT=new Date(outRec.timestamp);
+    const gross=Math.round((outT-inT)/60000);
+    workMin=Math.max(0,gross-brMin);
+    // 残業=18:00〜22:00の勤務分（休憩を除く）
+    const ot0=atTime(inT,'18:00'),ot1=atTime(inT,'22:00');
+    const os=Math.max(inT,ot0),oe=Math.min(outT,ot1);
+    if(oe>os){
+      overMin=Math.round((oe-os)/60000);
+      for(const b of (breakTimes||[])){
+        const bs=atTime(inT,b.start),be=atTime(inT,b.end);
+        const cs=Math.max(os,bs),ce=Math.min(oe,be);
+        if(ce>cs)overMin-=Math.round((ce-cs)/60000);
+      }
+      overMin=Math.max(0,overMin);
+    }
+    nightMin=nightMinutes(inT,outT);
+  }
+  return{inRec,outRec,workMin,brMin,overMin,nightMin,earlyMin};
 }
 
 /* ===== API ===== */
@@ -729,15 +746,15 @@ async function mountUserTab(){
     const monthRecs=records.filter(r=>{const d=new Date(r.timestamp);return d.getFullYear()===y&&d.getMonth()===m;});
     const days=new Date(y,m+1,0).getDate();
     const wsStd=settings.work_start||'',weStd=settings.work_end||'';
-    let rows='',totalWork=0,totalOver=0,totalNight=0,paidDays=0,absenceDays=0;
+    let rows='',totalEarly=0,totalOver=0,totalNight=0,paidDays=0,absenceDays=0;
     const todayStart=new Date();todayStart.setHours(0,0,0,0);
     for(let d=1;d<=days;d++){
       const ds=y+'-'+p2(m+1)+'-'+p2(d);
       const dayStr=ds.replace(/-/g,'/');
       const dayRecs=monthRecs.filter(r=>fmtDate(r.timestamp)===dayStr);
-      const s=calcDayStats(dayRecs,breakTimes);
+      const s=calcDayStats(dayRecs,breakTimes,wsStd);
       const leave=leaves.find(r=>r.date===ds&&r.status==='approved');
-      if(s.workMin!=null){totalWork+=s.workMin;totalOver+=s.overMin;totalNight+=s.nightMin;}
+      if(s.workMin!=null){totalEarly+=s.earlyMin;totalOver+=s.overMin;totalNight+=s.nightMin;}
       if(leave&&leave.type.startsWith('paid_leave'))paidDays+=leaveDays(leave.type);
       if(leave&&leave.type.startsWith('absence'))absenceDays+=leaveDays(leave.type);
       const wd=new Date(y,m,d).getDay();
@@ -760,11 +777,10 @@ async function mountUserTab(){
         <td style="${dayColor}">${d}（${wdStr}）</td>
         <td>${s.inRec?fmtTime(s.inRec.timestamp):leave?'—':''}</td>
         <td>${s.outRec?fmtTime(s.outRec.timestamp):leave?'—':''}</td>
-        <td>${s.brMin>0?fmtMin(s.brMin):''}</td>
-        <td>${s.workMin!=null?fmtMin(s.workMin):leave?`<span class="badge ${leave.type.startsWith('paid_leave')?'badge-confirmed':'badge-rejected'}">${leaveLabel(leave.type)}</span>`:''}</td>
+        <td>${s.earlyMin>0?fmtMin(s.earlyMin):''}</td>
         <td>${s.overMin>0?fmtMin(s.overMin):''}</td>
         <td>${s.nightMin>0?fmtMin(s.nightMin):''}</td>
-        <td style="font-size:10.5px;">${notes.join(' ')}</td>
+        <td style="font-size:10.5px;">${leave?`<span class="badge ${leave.type.startsWith('paid_leave')?'badge-confirmed':'badge-rejected'}">${leaveLabel(leave.type)}</span> `:''}${notes.join(' ')}</td>
       </tr>`;
     }
     const overWarn=totalOver>2700?`<div class="warn-box">⚠ 月間残業が45時間を超えています（36協定上限に注意）</div>`:'';
@@ -777,13 +793,13 @@ async function mountUserTab(){
       ${overWarn}
       <div class="card" style="padding:12px;">
         <div style="display:flex;gap:14px;margin-bottom:12px;font-size:12.5px;flex-wrap:wrap;">
-          <span>実働：<strong>${fmtMin(totalWork)}</strong></span>
+          <span>早出：<strong>${fmtMin(totalEarly)}</strong></span>
           <span style="${totalOver>2700?'color:var(--red);':''}">残業：<strong>${fmtMin(totalOver)}</strong></span>
           <span>深夜：<strong>${fmtMin(totalNight)}</strong></span>
           <span>有給：<strong>${paidDays}日</strong></span>
           <span>欠勤：<strong>${absenceDays}日</strong></span>
         </div>
-        <table><thead><tr><th>日</th><th>出勤</th><th>退勤</th><th>休憩</th><th>実働</th><th>残業</th><th>深夜残業</th><th>備考</th></tr></thead><tbody>${rows}</tbody></table>
+        <table><thead><tr><th>日</th><th>出勤</th><th>退勤</th><th>早出</th><th>残業</th><th>深夜残業</th><th>備考</th></tr></thead><tbody>${rows}</tbody></table>
       </div>`;
     document.getElementById('prevMonth').addEventListener('click',()=>{state.viewMonth=new Date(y,m-1,1);mountUserTab();});
     document.getElementById('nextMonth').addEventListener('click',()=>{state.viewMonth=new Date(y,m+1,1);mountUserTab();});
@@ -1095,14 +1111,14 @@ async function mountAdminKintai(){
   for(const u of users){
     const recs=allRecords.filter(r=>r.email===u.email&&(()=>{const d=new Date(r.timestamp);return d.getFullYear()===y&&d.getMonth()===m;})());
     const leaves=allLeaves.filter(r=>r.email===u.email);
-    let rows='',totalWork=0,totalOver=0,totalNight=0;
+    let rows='',totalEarly=0,totalOver=0,totalNight=0;
     for(let d=1;d<=days;d++){
       const ds=y+'-'+p2(m+1)+'-'+p2(d);
       const dayStr=ds.replace(/-/g,'/');
       const dayRecs=recs.filter(r=>fmtDate(r.timestamp)===dayStr);
-      const s=calcDayStats(dayRecs,breakTimes);
+      const s=calcDayStats(dayRecs,breakTimes,wsStd);
       const leave=leaves.find(r=>r.date===ds);
-      if(s.workMin!=null){totalWork+=s.workMin;totalOver+=s.overMin;totalNight+=s.nightMin;}
+      if(s.workMin!=null){totalEarly+=s.earlyMin;totalOver+=s.overMin;totalNight+=s.nightMin;}
       const wd=new Date(y,m,d).getDay();
       const wdStr=['日','月','火','水','木','金','土'][wd];
       const holiday=holidayMap[ds];
@@ -1123,18 +1139,17 @@ async function mountAdminKintai(){
         <td style="${dayColor}">${d}(${wdStr})</td>
         <td>${s.inRec?fmtTime(s.inRec.timestamp):leave?'—':''}</td>
         <td>${s.outRec?fmtTime(s.outRec.timestamp):leave?'—':''}</td>
-        <td>${s.brMin>0?fmtMin(s.brMin):''}</td>
-        <td>${s.workMin!=null?fmtMin(s.workMin):leave?`<span class="badge ${leave.type.startsWith('paid_leave')?'badge-confirmed':'badge-rejected'}">${leaveLabel(leave.type)}</span>`:''}</td>
+        <td>${s.earlyMin>0?fmtMin(s.earlyMin):''}</td>
         <td>${s.overMin>0?fmtMin(s.overMin):''}</td>
         <td>${s.nightMin>0?fmtMin(s.nightMin):''}</td>
-        <td style="font-size:10px;">${notes.join(' ')}</td>
+        <td style="font-size:10px;">${leave?`<span class="badge ${leave.type.startsWith('paid_leave')?'badge-confirmed':'badge-rejected'}">${leaveLabel(leave.type)}</span> `:''}${notes.join(' ')}</td>
         <td>${closed?'':dayRecs.map(r=>`<button class="btn btn-red btn-sm" style="margin:1px;padding:3px 6px;font-size:10px;" data-admdelatt="${r.id}">${typeLabel(r.type).slice(0,1)}${fmtTime(r.timestamp)}</button>`).join('')}</td>
       </tr>`;
     }
     html+=`<div class="card" style="padding:12px;margin-bottom:12px;">
       <h3 style="margin-bottom:6px;">${escapeHtml(u.name)}<span class="hint" style="font-weight:400;margin-left:8px;">${escapeHtml(u.email)}</span>
-        <span style="float:right;font-size:11.5px;color:var(--ink-soft);">実働${fmtMin(totalWork)}｜<span style="${totalOver>2700?'color:var(--red);font-weight:700;':''}">残業${fmtMin(totalOver)}</span>｜深夜${fmtMin(totalNight)}</span></h3>
-      <table><thead><tr><th>日</th><th>出</th><th>退</th><th>休憩</th><th>実働</th><th>残業</th><th>深夜</th><th>備考</th><th>削除</th></tr></thead><tbody>${rows}</tbody></table>
+        <span style="float:right;font-size:11.5px;color:var(--ink-soft);">早出${fmtMin(totalEarly)}｜<span style="${totalOver>2700?'color:var(--red);font-weight:700;':''}">残業${fmtMin(totalOver)}</span>｜深夜${fmtMin(totalNight)}</span></h3>
+      <table><thead><tr><th>日</th><th>出</th><th>退</th><th>早出</th><th>残業</th><th>深夜</th><th>備考</th><th>削除</th></tr></thead><tbody>${rows}</tbody></table>
     </div>`;
   }
   body.innerHTML=html;
@@ -1162,6 +1177,7 @@ async function mountAdminKintai(){
 
 /* ===== Excel(xlsx)出力 ===== */
 function exportXlsx(users,allRecords,allLeaves,settings,breakTimes,y,m){
+  const wsStd=settings.work_start||'08:00';
   const days=new Date(y,m+1,0).getDate();
   const wdStr=['日','月','火','水','木','金','土'];
   const rows=[['氏名','日付','曜日','出勤','退勤','休憩','実働','残業','深夜','現場','備考']];
@@ -1172,7 +1188,7 @@ function exportXlsx(users,allRecords,allLeaves,settings,breakTimes,y,m){
       const ds=y+'-'+p2(m+1)+'-'+p2(d);
       const dayStr=ds.replace(/-/g,'/');
       const dayRecs=recs.filter(r=>fmtDate(r.timestamp)===dayStr);
-      const s=calcDayStats(dayRecs,breakTimes);
+      const s=calcDayStats(dayRecs,breakTimes,wsStd);
       const leave=leaves.find(r=>r.date===ds);
       const notes=[];
       if(s.inRec&&s.inRec.from_reservation)notes.push('予約打刻');
