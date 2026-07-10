@@ -484,6 +484,7 @@ function renderAdminShell(){return`
       <div class="tab ${state.adminTab==='corrections'?'active':''}" data-atab="corrections">修正依頼</div>
       <div class="tab ${state.adminTab==='leave'?'active':''}" data-atab="leave">有給・欠勤</div>
       <div class="tab ${state.adminTab==='kintai'?'active':''}" data-atab="kintai">出勤簿</div>
+      <div class="tab ${state.adminTab==='notice'?'active':''}" data-atab="notice">お知らせ</div>
       <div class="tab ${state.adminTab==='settings'?'active':''}" data-atab="settings">設定</div>
     </div>
     <div id="adminTabBody">読み込み中...</div>
@@ -554,6 +555,13 @@ function attachHandlers(){
 }
 function showAuthErr(msg){let eb=document.getElementById('authErrorBox');if(!eb){eb=document.createElement('div');eb.id='authErrorBox';eb.className='error-box';const btn=document.getElementById('loginBtn')||document.getElementById('adminLoginBtn');if(btn)btn.after(eb);else document.querySelector('.auth-card').appendChild(eb);}eb.textContent=msg;}
 
+/* ===== お知らせ ===== */
+async function getMyNotices(email){
+  try{return await sbFetch('announcements?target_email=eq.'+encodeURIComponent(email)+'&read=eq.false&order=created_at.desc');}catch(e){return [];}
+}
+async function sendNotice(targetEmail,message,createdBy){
+  await sbInsert('announcements',{id:genId(),target_email:targetEmail,message,created_by:createdBy||'admin',created_at:new Date().toISOString(),read:false});
+}
 /* ===== ユーザータブ ===== */
 async function mountUserTab(){
   const body=document.getElementById('userTabBody');
@@ -561,7 +569,7 @@ async function mountUserTab(){
   const email=state.currentUser.email;
 
   if(state.userTab==='punch'){
-    const [records,sites]=await Promise.all([getAttendance(email),getSites()]);
+    const [records,sites,settings,notices]=await Promise.all([getAttendance(email),getSites(),getSettings(),getMyNotices(email)]);
     const last=records[0];
     const st=last?last.type:null;
     const statusText=st==='clock_in'?'現在：出勤中':'現在：退勤中 / 未出勤';
@@ -584,6 +592,8 @@ async function mountUserTab(){
         <div class="date" id="liveDate">----/--/--</div>
         <div class="status ${statusCls}">${statusText}</div>
       </div>
+      ${settings.announce_text?`<div class="card" style="padding:12px;margin-bottom:12px;"><h3 style="margin-bottom:6px;">📢 お知らせ</h3><div style="white-space:pre-wrap;font-size:13px;line-height:1.7;">${escapeHtml(settings.announce_text)}</div></div>`:''}
+      ${notices.length?`<div class="card" style="padding:12px;margin-bottom:12px;"><h3 style="margin-bottom:6px;">✉ あなた宛のメッセージ</h3>${notices.map(n=>`<div style="border-bottom:1px solid var(--line);padding:8px 0;display:flex;justify-content:space-between;gap:10px;align-items:center;"><div style="font-size:13px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(n.message)}<div class="hint">${fmtDateTime(n.created_at)}</div></div><button class="btn btn-line btn-sm" data-noticeread="${n.id}">既読</button></div>`).join('')}</div>`:''}
       ${reserveBlock}
       ${siteSel}
       <div class="punch-grid">
@@ -595,6 +605,9 @@ async function mountUserTab(){
         ${queue.length?`<div style="margin-top:8px;"><span class="badge badge-offline">オフライン保存 ${queue.length}件</span></div>`:''}
       </div>`;
     document.getElementById('punchIn').addEventListener('click',()=>doPunch('clock_in'));
+    document.querySelectorAll('[data-noticeread]').forEach(b=>b.addEventListener('click',async()=>{
+      await sbUpdate('announcements','id=eq.'+b.getAttribute('data-noticeread'),{read:true});mountUserTab();
+    }));
     document.getElementById('punchOut').addEventListener('click',()=>doPunch('clock_out'));
     tickClock();
   }
@@ -1075,6 +1088,36 @@ async function mountAdminTab(){
     if(!state.viewMonth)state.viewMonth=new Date();
     mountAdminKintai();
   }
+  else if(state.adminTab==='notice'){
+    const [users,settings,pending]=await Promise.all([getAllUsers(),getSettings(),sbFetch('announcements?read=eq.false&order=created_at.desc&limit=50')]);
+    body.innerHTML=`
+      <div class="card"><h2>全体お知らせ（全員の打刻画面に表示）</h2>
+        <textarea id="annText" rows="4" style="width:100%;">${escapeHtml(settings.announce_text||'')}</textarea>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button class="btn btn-navy" id="annSave">保存</button>
+          <button class="btn btn-line" id="annClear">表示をやめる</button>
+        </div>
+      </div>
+      <div class="card"><h2>個人宛メッセージ</h2>
+        <label>宛先</label><select id="msgTo">${users.filter(u=>!u.disabled).map(u=>`<option value="${escapeHtml(u.email)}">${escapeHtml(u.name)}</option>`).join('')}</select>
+        <label>メッセージ</label><textarea id="msgText" rows="3" placeholder="例：来週の現場は7:30集合です"></textarea>
+        <button class="btn btn-green" id="msgSend" style="margin-top:10px;">送信</button>
+      </div>
+      <div class="card"><h2>未読メッセージ</h2>
+        ${pending.length?pending.map(n=>`<div style="border-bottom:1px solid var(--line);padding:8px 0;font-size:13px;"><strong>${escapeHtml((users.find(u=>u.email===n.target_email)||{}).name||n.target_email)}</strong>：${escapeHtml(n.message)}<span class="hint" style="margin-left:8px;">${fmtDateTime(n.created_at)}</span> <button class="btn btn-red btn-sm" data-anndel="${n.id}" style="float:right;">取消</button></div>`).join(''):'<div class="empty">未読はありません</div>'}
+      </div>`;
+    document.getElementById('annSave').addEventListener('click',async()=>{await saveSetting('announce_text',document.getElementById('annText').value.trim());showToast('保存しました');});
+    document.getElementById('annClear').addEventListener('click',async()=>{await saveSetting('announce_text','');document.getElementById('annText').value='';showToast('全体お知らせを消しました');});
+    document.getElementById('msgSend').addEventListener('click',async()=>{
+      const to=document.getElementById('msgTo').value,txt=document.getElementById('msgText').value.trim();
+      if(!txt){showToast('メッセージを入力してください');return;}
+      await sendNotice(to,txt,state.currentUser?state.currentUser.email:'admin');
+      document.getElementById('msgText').value='';showToast('送信しました');mountAdminTab();
+    });
+    document.querySelectorAll('[data-anndel]').forEach(b=>b.addEventListener('click',async()=>{
+      await sbFetch('announcements?id=eq.'+b.getAttribute('data-anndel'),'DELETE');showToast('取り消しました');mountAdminTab();
+    }));
+  }
   else if(state.adminTab==='settings'){
     mountAdminSettings();
   }
@@ -1143,7 +1186,7 @@ async function mountAdminKintai(){
         <td>${s.overMin>0?fmtMin(s.overMin):''}</td>
         <td>${s.nightMin>0?fmtMin(s.nightMin):''}</td>
         <td style="font-size:10px;">${leave?`<span class="badge ${leave.type.startsWith('paid_leave')?'badge-confirmed':'badge-rejected'}">${leaveLabel(leave.type)}</span> `:''}${notes.join(' ')}</td>
-        <td>${closed?'':dayRecs.map(r=>`<button class="btn btn-red btn-sm" style="margin:1px;padding:3px 6px;font-size:10px;" data-admdelatt="${r.id}">${typeLabel(r.type).slice(0,1)}${fmtTime(r.timestamp)}</button>`).join('')}</td>
+        <td>${closed?'':dayRecs.map(r=>`<span style="white-space:nowrap;"><button class="btn btn-line btn-sm" style="margin:1px;padding:3px 6px;font-size:10px;" data-admeditatt="${r.id}|${r.email}|${r.type}|${r.timestamp}">✎${typeLabel(r.type).slice(0,1)}${fmtTime(r.timestamp)}</button><button class="btn btn-red btn-sm" style="margin:1px;padding:3px 6px;font-size:10px;" data-admdelatt="${r.id}">×</button></span>`).join('')}</td>
       </tr>`;
     }
     html+=`<div class="card" style="padding:12px;margin-bottom:12px;">
@@ -1172,6 +1215,31 @@ async function mountAdminKintai(){
     if(!confirm('この打刻を削除しますか？'))return;
     await softDeleteAttendance(btn.getAttribute('data-admdelatt'),'admin');
     showToast('削除しました');mountAdminKintai();
+  }));
+  document.querySelectorAll('[data-admeditatt]').forEach(btn=>btn.addEventListener('click',()=>{
+    const [rid,rEmail,rType,rTs]=btn.getAttribute('data-admeditatt').split('|');
+    const cur=new Date(rTs);
+    document.getElementById('admEditModalBg')?.remove();
+    const bg=document.createElement('div');bg.className='modal-bg';bg.id='admEditModalBg';
+    bg.innerHTML=`<div class="modal"><h2>${typeLabel(rType)}時刻の編集</h2>
+      <div class="hint">${fmtDate(rTs)} ${fmtTime(rTs)} → 新しい時刻を指定</div>
+      <input id="admEditTime" type="time" value="${p2(cur.getHours())}:${p2(cur.getMinutes())}">
+      <div style="display:flex;gap:10px;margin-top:16px;">
+        <button class="btn btn-line" id="admEditCancel" style="flex:1;">キャンセル</button>
+        <button class="btn btn-navy" id="admEditSave" style="flex:1;">変更する</button>
+      </div></div>`;
+    document.body.appendChild(bg);
+    document.getElementById('admEditCancel').addEventListener('click',()=>bg.remove());
+    document.getElementById('admEditSave').addEventListener('click',async()=>{
+      const t=document.getElementById('admEditTime').value;
+      if(!t){showToast('時刻を入力してください');return;}
+      const nd=new Date(cur);const[h,mi]=t.split(':');nd.setHours(+h,+mi,0,0);
+      await sbUpdate('attendance','id=eq.'+rid,{timestamp:nd.toISOString(),corrected:true});
+      const msg='管理者が'+(cur.getMonth()+1)+'月'+cur.getDate()+'日の'+typeLabel(rType)+' '+fmtTime(rTs)+'→'+t+' に変更しました';
+      await sendNotice(rEmail,msg,state.currentUser?state.currentUser.email:'admin');
+      logAudit('admin','edit_att',rid,fmtTime(rTs)+'->'+t);
+      bg.remove();showToast('変更し、本人にお知らせしました');mountAdminKintai();
+    });
   }));
 }
 
